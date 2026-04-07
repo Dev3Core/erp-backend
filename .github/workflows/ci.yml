@@ -10,7 +10,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine@sha256:d4e7bbd53503d420c248ad3039898876b7971bf5e51a6eb2f0b8c00ae8e718d0
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: erp
           POSTGRES_PASSWORD: erp_local
@@ -24,7 +24,7 @@ jobs:
           --health-retries 5
 
       redis:
-        image: redis:7-alpine@sha256:c1b9f9ba224f516e43f1a4b0cfb29b9e31ebf04f5ff194dd8140114a198c346e
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
