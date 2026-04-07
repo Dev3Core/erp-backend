@@ -1,7 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import String, Text, text
+from sqlalchemy import ForeignKey, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -26,6 +26,15 @@ class Tenant(TimestampMixin, Base):
     plan: Mapped[Plan] = mapped_column(default=Plan.TRIAL, nullable=False)
     logo_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
-    users: Mapped[list["User"]] = relationship(back_populates="tenant")  # noqa: F821
+    owner: Mapped["User | None"] = relationship(  # noqa: F821
+        foreign_keys=[owner_id],
+    )
+    users: Mapped[list["User"]] = relationship(  # noqa: F821
+        back_populates="tenant", foreign_keys="User.tenant_id"
+    )
     rooms: Mapped[list["Room"]] = relationship(back_populates="tenant")  # noqa: F821

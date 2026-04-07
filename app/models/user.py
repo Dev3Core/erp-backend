@@ -8,6 +8,7 @@ from app.models.base import Base, TenantMixin, TimestampMixin
 
 
 class Role(str, enum.Enum):
+    OWNER = "OWNER"
     ADMIN = "ADMIN"
     MONITOR = "MONITOR"
     MODEL = "MODEL"
@@ -30,6 +31,8 @@ class User(TenantMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[Role] = mapped_column(default=Role.MODEL, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="users")  # noqa: F821
     shifts: Mapped[list["Shift"]] = relationship(back_populates="model")  # noqa: F821

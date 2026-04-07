@@ -1,0 +1,31 @@
+# ============================================================================
+# Development Dockerfile — erp-webcam-backend
+# Hot-reload, dev dependencies included, debugger-ready.
+# ============================================================================
+
+FROM python:3.12-slim@sha256:6294405dc2a6612366092848c41c2ec7f9ba7368b618ee707dcf7f75c1d07830
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_VERSION=2.3.3 \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1
+
+RUN pip install --no-cache-dir "poetry==${POETRY_VERSION}"
+
+WORKDIR /app
+
+COPY pyproject.toml poetry.lock ./
+
+RUN poetry install --no-root
+
+COPY . .
+
+RUN poetry install
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+EXPOSE 8000
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

@@ -10,7 +10,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16-alpine@sha256:d4e7bbd53503d420c248ad3039898876b7971bf5e51a6eb2f0b8c00ae8e718d0
         env:
           POSTGRES_USER: erp
           POSTGRES_PASSWORD: erp_local
@@ -19,6 +19,16 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd "pg_isready -U erp -d erp_webcam"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine@sha256:c1b9f9ba224f516e43f1a4b0cfb29b9e31ebf04f5ff194dd8140114a198c346e
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -36,16 +46,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "2.3.3"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+          restore-keys: venv-${{ runner.os }}-
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: poetry install
 
       - name: Lint
         run: |
-          ruff check .
-          ruff format --check .
+          poetry run ruff check .
+          poetry run ruff format --check .
 
       - name: Test
-        run: pytest -v
+        run: poetry run pytest -v

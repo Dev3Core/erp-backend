@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     JWT_SECRET: str = "change-me-to-a-secure-secret-of-at-least-64-characters"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRES_MINUTES: int = 15
+    JWT_REFRESH_EXPIRES_MINUTES: int = 10080  # 7 days
 
     CORS_ORIGINS: list[str] = ["http://localhost:3000"]
 
