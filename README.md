@@ -1,123 +1,215 @@
 # ERP Webcam Backend
 
-Multi-tenant ERP SaaS backend for webcam studio management. Built with FastAPI, SQLAlchemy 2.0, and PostgreSQL.
+Multi-tenant ERP SaaS backend for webcam studio management.
 
 ## Tech Stack
 
-| Component        | Technology                          |
-|------------------|-------------------------------------|
-| Framework        | FastAPI 0.115+                      |
-| Language         | Python 3.12+                        |
-| Database         | PostgreSQL 16 (asyncpg)             |
-| ORM              | SQLAlchemy 2.0 (async)              |
-| Migrations       | Alembic                             |
-| Cache / Queue    | Redis 7 + ARQ                       |
-| Auth             | argon2-cffi + python-jose (JWT)     |
-| HTTP Client      | httpx (async)                       |
-| Automation       | Playwright                          |
-| Validation       | Pydantic v2 + pydantic-settings     |
-| Linting          | Ruff                                |
-| Testing          | pytest + pytest-asyncio + httpx     |
-| Containerization | Docker + Docker Compose             |
+| Component      | Technology                      |
+|----------------|---------------------------------|
+| Framework      | FastAPI 0.115+                  |
+| Language       | Python 3.12+                    |
+| Database       | PostgreSQL 16 (asyncpg)         |
+| ORM            | SQLAlchemy 2.0 (async)          |
+| Migrations     | Alembic                         |
+| Cache / Queue  | Redis 7 + ARQ                   |
+| Auth           | argon2 + JWT (HttpOnly cookies) |
+| MFA            | TOTP (pyotp)                    |
+| HTTP Client    | httpx (async)                   |
+| Automation     | Playwright                      |
+| Validation     | Pydantic v2 + pydantic-settings |
+| Deps           | Poetry 2.3+                     |
+| Linting        | Ruff                            |
+| Testing        | pytest + pytest-asyncio + httpx |
+| Container      | Docker + Compose                |
 
 ## Prerequisites
 
-- Python 3.12 or later
-- PostgreSQL 16
-- Redis 7
-- Docker and Docker Compose (optional, for containerized setup)
+- Python 3.12+
+- [Poetry 2.3+](https://python-poetry.org/docs/#installation)
+- Docker y Docker Compose
+- Make (opcional, para atajos)
 
-## Local Setup
+## Estructura del proyecto
 
-### With Docker (recommended)
+```
+erp-backend/
+├── .docker/                        # Configuracion Docker
+│   ├── Dockerfile                  # Imagen de produccion (multi-stage)
+│   ├── Dockerfile.dev              # Imagen de desarrollo (hot-reload)
+│   ├── compose.yml                 # Compose desarrollo
+│   └── compose.prod.yml           # Compose produccion
+├── .github/workflows/ci.yml       # Pipeline CI (lint + test)
+├── app/                            # Codigo fuente
+│   ├── api/v1/                     # Rutas versionadas
+│   │   ├── auth.py                 # Login, refresh, logout, MFA
+│   │   ├── health.py               # Health check
+│   │   └── router.py               # Agregador de rutas v1
+│   ├── core/                       # Utilidades transversales
+│   │   ├── dependencies.py         # FastAPI deps (auth, roles, MFA)
+│   │   ├── security.py             # JWT, hashing, blacklist keys
+│   │   └── tenant.py               # Tenant context (ContextVar + middleware)
+│   ├── models/                     # SQLAlchemy ORM models
+│   ├── schemas/                    # Pydantic DTOs
+│   ├── services/                   # Logica de negocio
+│   │   └── auth.py                 # Servicio de autenticacion
+│   ├── workers/                    # Tareas background (ARQ)
+│   ├── config.py                   # Settings (pydantic-settings)
+│   ├── database.py                 # Async engine + session
+│   ├── redis.py                    # Redis connection pool
+│   └── main.py                     # FastAPI factory + lifespan
+├── alembic/                        # Migraciones de DB
+├── tests/                          # Suite de tests
+├── .dockerignore
+├── .env.example                    # Template variables desarrollo
+├── .env.production.example         # Template variables produccion
+├── Makefile                        # Atajos de comandos
+├── pyproject.toml                  # Poetry config + herramientas
+└── poetry.lock                     # Dependencias pinneadas
+```
+
+## Setup local
+
+### 1. Clonar e instalar dependencias
+
+```bash
+git clone https://github.com/tu-org/erp-backend.git
+cd erp-backend
+poetry install
+```
+
+### 2. Configurar variables de entorno
 
 ```bash
 cp .env.example .env
-docker compose up -d
 ```
 
-The API will be available at `http://localhost:8000`. OpenAPI docs at `http://localhost:8000/docs`.
+Editar `.env` con los valores adecuados. Como minimo cambiar `JWT_SECRET`.
 
-### Without Docker
-
-1. Create and activate a virtual environment:
+### 3. Levantar infraestructura (Postgres + Redis)
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+# Solo los servicios de infra, sin la app
+docker compose -f .docker/compose.yml up postgres redis -d
 ```
 
-2. Install dependencies:
+### 4. Ejecutar migraciones
 
 ```bash
-pip install -e ".[dev]"
+poetry run alembic upgrade head
 ```
 
-3. Configure environment variables:
+### 5. Levantar el servidor de desarrollo
 
 ```bash
-cp .env.example .env
-# Edit .env with your local database and Redis connection details
+poetry run uvicorn app.main:app --reload --port 8000
 ```
 
-4. Run database migrations:
+### 6. Levantar el worker ARQ (terminal aparte)
 
 ```bash
-alembic upgrade head
+poetry run arq app.workers.tasks.WorkerSettings
 ```
 
-5. Start the development server:
+La API queda en `http://localhost:8000`. Docs en `http://localhost:8000/docs`.
+
+## Docker
+
+### Desarrollo
+
+Levanta todo (Postgres, Redis, API con hot-reload, Worker):
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+make dev
+# o directamente:
+docker compose -f .docker/compose.yml up --build
 ```
 
-6. Start the ARQ worker (in a separate terminal):
+Los volumenes montan `app/`, `alembic/` y `tests/` para hot-reload sin rebuild.
+
+### Produccion
 
 ```bash
-arq app.workers.tasks.WorkerSettings
+cp .env.production.example .env.production
+# Editar .env.production con valores reales
+
+make prod
+# o directamente:
+docker compose -f .docker/compose.prod.yml up -d --build
 ```
 
-## Project Structure
+Diferencias con desarrollo:
+- Multi-stage build, solo dependencias de produccion
+- Usuario non-root sin shell
+- Filesystem read-only (`tmpfs` para `/tmp`)
+- Limites de CPU y memoria por servicio
+- Redis con password y maxmemory policy
+- Red aislada (Postgres/Redis sin puertos expuestos)
+- Restart policy con backoff
 
-```
-app/
-  main.py          - FastAPI application factory, lifespan, middleware
-  config.py        - Application settings via pydantic-settings
-  database.py      - Async SQLAlchemy engine and session management
-  redis.py         - Redis connection pool management
-  models/          - SQLAlchemy ORM models
-  schemas/         - Pydantic request/response schemas
-  api/v1/          - API route handlers (versioned)
-  core/            - Security utilities, tenant context
-  workers/         - ARQ background task definitions
-alembic/           - Database migration scripts
-tests/             - Test suite
-```
+## Comandos (Makefile)
 
-## Running Tests
+| Comando                            | Descripcion                               |
+|------------------------------------|-------------------------------------------|
+| `make dev`                         | Levantar entorno de desarrollo             |
+| `make dev-down`                    | Apagar entorno de desarrollo               |
+| `make dev-logs`                    | Ver logs de la API (dev)                   |
+| `make prod`                        | Levantar entorno de produccion             |
+| `make prod-down`                   | Apagar entorno de produccion               |
+| `make prod-logs`                   | Ver logs de la API (prod)                  |
+| `make migrate`                     | Ejecutar migraciones pendientes            |
+| `make migration msg="descripcion"` | Generar nueva migracion                    |
+| `make lint`                        | Ejecutar linter (ruff check + format)      |
+| `make lint-fix`                    | Corregir automaticamente errores de lint   |
+| `make test`                        | Ejecutar tests                             |
+| `make install`                     | Instalar dependencias con Poetry           |
+| `make shell`                       | Abrir shell en el contenedor de la API     |
 
-```bash
-pytest -v
-```
+## API Endpoints
 
-## Environment Variables
+### Auth (`/api/v1/auth`)
 
-| Variable              | Description                        | Default                                                      |
-|-----------------------|------------------------------------|--------------------------------------------------------------|
-| `DATABASE_URL`        | PostgreSQL connection string       | `postgresql+asyncpg://erp:erp_local@localhost:5432/erp_webcam` |
-| `REDIS_URL`           | Redis connection string            | `redis://localhost:6379`                                     |
-| `JWT_SECRET`          | Secret key for JWT signing         | (must be changed in production)                              |
-| `JWT_ALGORITHM`       | JWT signing algorithm              | `HS256`                                                      |
-| `JWT_EXPIRES_MINUTES` | Access token expiration in minutes | `15`                                                         |
-| `CORS_ORIGINS`        | Allowed CORS origins (JSON list)   | `["http://localhost:3000"]`                                  |
-| `DEBUG`               | Enable debug mode                  | `false`                                                      |
+| Metodo | Ruta           | Descripcion                                  | Auth |
+|--------|----------------|----------------------------------------------|------|
+| POST   | `/register`    | Crea tenant + owner. Retorna IDs y slug      | No   |
+| POST   | `/login`       | Login con email/password. JWT en cookies HttpOnly | No |
+| POST   | `/refresh`     | Rota access + refresh token                  | Cookie |
+| POST   | `/logout`      | Invalida tokens en Redis                     | Cookie |
+| POST   | `/mfa/setup`   | Genera secreto TOTP + URI para QR            | JWT  |
+| POST   | `/mfa/verify`  | Valida codigo TOTP, activa MFA               | JWT  |
+
+### Health (`/api/v1`)
+
+| Metodo | Ruta      | Descripcion    | Auth |
+|--------|-----------|----------------|------|
+| GET    | `/health` | Health check   | No   |
+
+## Variables de entorno
+
+| Variable                     | Descripcion                        | Default                           |
+|------------------------------|------------------------------------|-----------------------------------|
+| `DATABASE_URL`               | PostgreSQL connection string       | `postgresql+asyncpg://erp:erp_local@localhost:5432/erp_webcam` |
+| `REDIS_URL`                  | Redis connection string            | `redis://localhost:6379`          |
+| `JWT_SECRET`                 | Clave para firmar JWT              | *(cambiar obligatoriamente)*      |
+| `JWT_ALGORITHM`              | Algoritmo JWT                      | `HS256`                           |
+| `JWT_EXPIRES_MINUTES`        | Expiracion access token (min)      | `15`                              |
+| `JWT_REFRESH_EXPIRES_MINUTES`| Expiracion refresh token (min)     | `10080` (7 dias)                  |
+| `CORS_ORIGINS`               | Origenes CORS permitidos (JSON)    | `["http://localhost:3000"]`       |
+| `DEBUG`                      | Modo debug                         | `false`                           |
+
+**Solo produccion** (`.env.production`):
+
+| Variable           | Descripcion                 |
+|--------------------|-----------------------------|
+| `POSTGRES_USER`    | Usuario de PostgreSQL       |
+| `POSTGRES_PASSWORD`| Password de PostgreSQL      |
+| `POSTGRES_DB`      | Nombre de la base de datos  |
+| `REDIS_PASSWORD`   | Password de Redis           |
+| `API_PORT`         | Puerto expuesto de la API   |
 
 ## Contributing
 
-1. Create a feature branch from `main`.
-2. Install pre-commit hooks: `pre-commit install`.
-3. Write tests for new functionality.
-4. Ensure `ruff check .` and `ruff format --check .` pass.
-5. Ensure all tests pass with `pytest -v`.
-6. Open a pull request against `main`.
+1. Branch desde `main`
+2. `pre-commit install` para activar hooks
+3. Tests para funcionalidad nueva
+4. `make lint` y `make test` deben pasar
+5. PR contra `main`

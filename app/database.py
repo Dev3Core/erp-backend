@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import settings
-from app.models import *  # noqa: F401, F403 — ensure all models are registered for Alembic
+from app.models import *  # noqa: F403 — ensure all models are registered for Alembic
 
 engine = create_async_engine(
     settings.DATABASE_URL,

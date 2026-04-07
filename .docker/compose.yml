@@ -1,6 +1,11 @@
+# ============================================================================
+# Development compose
+# Usage: docker compose -f .docker/compose.yml up
+# ============================================================================
+
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:d4e7bbd53503d420c248ad3039898876b7971bf5e51a6eb2f0b8c00ae8e718d0
     restart: unless-stopped
     environment:
       POSTGRES_USER: erp
@@ -17,43 +22,60 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:c1b9f9ba224f516e43f1a4b0cfb29b9e31ebf04f5ff194dd8140114a198c346e
     restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
       - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
-    build: .
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.dev
     restart: unless-stopped
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://erp:erp_local@postgres:5432/erp_webcam
       REDIS_URL: redis://redis:6379
+      DEBUG: "true"
+    volumes:
+      - ../app:/app/app:cached
+      - ../alembic:/app/alembic:cached
+      - ../tests:/app/tests:cached
+      - ../alembic.ini:/app/alembic.ini:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
   worker:
-    build: .
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.dev
     restart: unless-stopped
     command: ["arq", "app.workers.tasks.WorkerSettings"]
     env_file:
-      - .env
+      - ../.env
     environment:
       DATABASE_URL: postgresql+asyncpg://erp:erp_local@postgres:5432/erp_webcam
       REDIS_URL: redis://redis:6379
+    volumes:
+      - ../app:/app/app:cached
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
 volumes:
   pgdata:

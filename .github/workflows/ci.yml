@@ -26,6 +26,16 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     env:
       DATABASE_URL: postgresql+asyncpg://erp:erp_local@localhost:5432/erp_webcam
       REDIS_URL: redis://localhost:6379
@@ -39,16 +49,27 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "2.3.3"
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
+          restore-keys: venv-${{ runner.os }}-
 
       - name: Install dependencies
-        run: uv pip install --system -e ".[dev]"
+        run: poetry install
 
       - name: Lint
         run: |
-          ruff check .
-          ruff format --check .
+          poetry run ruff check .
+          poetry run ruff format --check .
 
       - name: Test
-        run: pytest -v
+        run: poetry run pytest -v

@@ -2,58 +2,44 @@
 name = "erp-webcam-backend"
 version = "0.1.0"
 description = "Multi-tenant ERP SaaS backend for webcam studio management"
+authors = [{ name = "ERP Team" }]
+readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
-    "sqlalchemy[asyncio]>=2.0.0",
-    "asyncpg>=0.30.0",
-    "alembic>=1.14.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "redis>=5.0.0",
-    "arq>=0.26.0",
-    "playwright>=1.48.0",
-    "argon2-cffi>=23.1.0",
-    "python-jose[cryptography]>=3.3.0",
-    "httpx>=0.27.0",
-]
+dynamic = ["dependencies"]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-asyncio>=0.24.0",
-    "httpx>=0.27.0",
-    "ruff>=0.8.0",
-    "pre-commit>=4.0.0",
-]
+[tool.poetry]
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = { version = "^0.32.0", extras = ["standard"] }
+sqlalchemy = { version = "^2.0.0", extras = ["asyncio"] }
+asyncpg = "^0.30.0"
+alembic = "^1.14.0"
+pydantic = "^2.0.0"
+pydantic-settings = "^2.0.0"
+redis = "^5.0.0"
+arq = "^0.26.0"
+playwright = "^1.48.0"
+argon2-cffi = "^23.1.0"
+python-jose = { version = "^3.3.0", extras = ["cryptography"] }
+httpx = "^0.27.0"
+pyotp = "^2.9.0"
+qrcode = { version = "^7.4.0", extras = ["pil"] }
+email-validator = "^2.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-asyncio = "^0.24.0"
+ruff = "^0.8.0"
+pre-commit = "^4.0.0"
+aiosqlite = "^0.22.1"
+fakeredis = "^2.34.1"
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.ruff]
-target-version = "py312"
-line-length = 99
-
-[tool.ruff.lint]
-select = [
-    "E",
-    "F",
-    "W",
-    "I",
-    "N",
-    "UP",
-    "B",
-    "A",
-    "SIM",
-    "TCH",
-    "RUF",
-]
-ignore = ["A003"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["app"]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

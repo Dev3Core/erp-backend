@@ -16,11 +16,13 @@ env/
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 
 # Environment
 .env
+.env.production
 
 # OS
 .DS_Store
