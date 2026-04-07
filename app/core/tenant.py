@@ -6,9 +6,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
-_current_tenant_id: ContextVar[uuid.UUID | None] = ContextVar(
-    "current_tenant_id", default=None
-)
+_current_tenant_id: ContextVar[uuid.UUID | None] = ContextVar("current_tenant_id", default=None)
 
 
 def get_current_tenant_id() -> uuid.UUID | None:
@@ -20,9 +18,7 @@ def set_current_tenant_id(tenant_id: uuid.UUID) -> None:
 
 
 class TenantMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         tenant_header = request.headers.get("X-Tenant-ID")
         if tenant_header:
             with contextlib.suppress(ValueError):

@@ -48,11 +48,12 @@ class AuthService:
         base_slug = _slugify(studio_name)
         slug = await self._ensure_unique_slug(base_slug)
 
-        tenant = Tenant(name=studio_name, slug=slug)
+        tenant = Tenant(id=uuid.uuid4(), name=studio_name, slug=slug)
         self._db.add(tenant)
         await self._db.flush()
 
         owner = User(
+            id=uuid.uuid4(),
             tenant_id=tenant.id,
             email=email,
             hashed_password=hash_password(password),
@@ -62,8 +63,12 @@ class AuthService:
         self._db.add(owner)
         await self._db.flush()
 
+        from sqlalchemy import update
+
+        await self._db.execute(
+            update(Tenant).where(Tenant.id == tenant.id).values(owner_id=owner.id)
+        )
         tenant.owner_id = owner.id
-        await self._db.flush()
 
         return tenant, owner
 
@@ -81,9 +86,7 @@ class AuthService:
 
         return user
 
-    def create_token_pair(
-        self, user: User, *, mfa_verified: bool = False
-    ) -> tuple[str, str]:
+    def create_token_pair(self, user: User, *, mfa_verified: bool = False) -> tuple[str, str]:
         jti = uuid.uuid4().hex
         payload = {
             "sub": str(user.id),

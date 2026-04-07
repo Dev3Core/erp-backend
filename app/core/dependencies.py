@@ -33,9 +33,7 @@ async def _get_current_user(
     if jti and await redis.exists(token_blacklist_key(jti)):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token revoked")
 
-    stmt = select(User).where(
-        User.id == uuid.UUID(str(payload["sub"])), User.is_active.is_(True)
-    )
+    stmt = select(User).where(User.id == uuid.UUID(str(payload["sub"])), User.is_active.is_(True))
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 

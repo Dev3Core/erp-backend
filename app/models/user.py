@@ -34,7 +34,9 @@ class User(TenantMixin, TimestampMixin, Base):
     mfa_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     mfa_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
 
-    tenant: Mapped["Tenant"] = relationship(back_populates="users")  # noqa: F821
+    tenant: Mapped["Tenant"] = relationship(  # noqa: F821
+        back_populates="users", foreign_keys=[tenant_id]
+    )
     shifts: Mapped[list["Shift"]] = relationship(back_populates="model")  # noqa: F821
     technical_sheets: Mapped[list["TechnicalSheet"]] = relationship(  # noqa: F821
         back_populates="model"
