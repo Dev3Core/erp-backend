@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import StaticPool, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.api.v1.auth import _get_audit_session_factory
 from app.core.security import hash_password
 from app.database import get_db
 from app.main import app
@@ -22,7 +23,7 @@ engine = create_async_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-test_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+TestingSession = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 @event.listens_for(engine.sync_engine, "connect")
@@ -36,15 +37,29 @@ def _set_sqlite_compat(dbapi_conn, _connection_record):
 class FakeRedis:
     def __init__(self):
         self._store: dict[str, str] = {}
+        self._counters: dict[str, int] = {}
 
     async def setex(self, key: str, ttl: int, value: str) -> None:
         self._store[key] = value
 
     async def exists(self, key: str) -> int:
-        return 1 if key in self._store else 0
+        return 1 if key in self._store or key in self._counters else 0
+
+    async def incr(self, key: str) -> int:
+        self._counters[key] = self._counters.get(key, 0) + 1
+        return self._counters[key]
+
+    async def expire(self, key: str, ttl: int) -> bool:
+        return key in self._counters or key in self._store
+
+    async def ttl(self, key: str) -> int:
+        if key in self._counters or key in self._store:
+            return 60
+        return -2
 
     async def flushall(self) -> None:
         self._store.clear()
+        self._counters.clear()
 
     async def aclose(self) -> None:
         pass
@@ -54,7 +69,7 @@ _fake_redis = FakeRedis()
 
 
 async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
-    async with test_session() as session:
+    async with TestingSession() as session:
         try:
             yield session
             await session.commit()
@@ -67,8 +82,13 @@ async def _override_get_redis() -> AsyncGenerator[FakeRedis, None]:
     yield _fake_redis
 
 
+def _override_audit_session_factory():
+    return TestingSession
+
+
 app.dependency_overrides[get_db] = _override_get_db
 app.dependency_overrides[get_redis] = _override_get_redis
+app.dependency_overrides[_get_audit_session_factory] = _override_audit_session_factory
 
 
 @pytest.fixture(autouse=True)
@@ -90,7 +110,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
 
 @pytest.fixture
 async def seed_tenant_and_owner() -> dict:
-    async with test_session() as session:
+    async with TestingSession() as session:
         tenant = Tenant(
             id=uuid.uuid4(),
             name="Test Studio",
@@ -123,7 +143,7 @@ async def seed_tenant_and_owner() -> dict:
 
 @pytest.fixture
 async def inactive_tenant_user() -> dict:
-    async with test_session() as session:
+    async with TestingSession() as session:
         tenant = Tenant(
             id=uuid.uuid4(),
             name="Suspended Studio",
