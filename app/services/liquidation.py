@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import CursorParams, paginate_cursor
 from app.models.liquidation import Liquidation, LiquidationStatus
 from app.models.shift import Shift
 from app.models.split_config import SplitConfig
@@ -79,34 +82,48 @@ class LiquidationService:
         self,
         *,
         tenant_id: uuid.UUID,
+        params: CursorParams,
         status: LiquidationStatus | None = None,
         date_from: date | None = None,
         date_to: date | None = None,
         shift_id: uuid.UUID | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[list[Liquidation], int]:
+    ) -> tuple[list[Liquidation], str | None, str | None]:
         stmt = select(Liquidation).where(Liquidation.tenant_id == tenant_id)
-        count_stmt = (
-            select(func.count()).select_from(Liquidation).where(Liquidation.tenant_id == tenant_id)
-        )
         if status is not None:
             stmt = stmt.where(Liquidation.status == status)
-            count_stmt = count_stmt.where(Liquidation.status == status)
         if date_from is not None:
             stmt = stmt.where(Liquidation.period_date >= date_from)
-            count_stmt = count_stmt.where(Liquidation.period_date >= date_from)
         if date_to is not None:
             stmt = stmt.where(Liquidation.period_date <= date_to)
-            count_stmt = count_stmt.where(Liquidation.period_date <= date_to)
         if shift_id is not None:
             stmt = stmt.where(Liquidation.shift_id == shift_id)
-            count_stmt = count_stmt.where(Liquidation.shift_id == shift_id)
+        return await paginate_cursor(
+            self._db,
+            stmt=stmt,
+            params=params,
+            created_col=Liquidation.created_at,
+            id_col=Liquidation.id,
+        )
 
-        stmt = stmt.order_by(Liquidation.period_date.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+    async def list_all_for_export(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        status: LiquidationStatus | None = None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+        max_rows: int = 10000,
+    ) -> list[Liquidation]:
+        """Non-paginated read for exports. Hard-capped at `max_rows` to keep memory bounded."""
+        stmt = select(Liquidation).where(Liquidation.tenant_id == tenant_id)
+        if status is not None:
+            stmt = stmt.where(Liquidation.status == status)
+        if date_from is not None:
+            stmt = stmt.where(Liquidation.period_date >= date_from)
+        if date_to is not None:
+            stmt = stmt.where(Liquidation.period_date <= date_to)
+        stmt = stmt.order_by(Liquidation.period_date.desc(), Liquidation.id.desc()).limit(max_rows)
+        return list((await self._db.execute(stmt)).scalars().all())
 
     async def get(self, *, tenant_id: uuid.UUID, liquidation_id: uuid.UUID) -> Liquidation:
         return await self._get_in_tenant(tenant_id=tenant_id, liquidation_id=liquidation_id)

@@ -1,8 +1,9 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import CursorParams, paginate_cursor
 from app.models.shift import Shift
 from app.models.shift_report import ShiftReport
 from app.services.errors import NotFoundError
@@ -49,22 +50,16 @@ class ShiftReportService:
         self,
         *,
         tenant_id: uuid.UUID,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[list[ShiftReport], int]:
-        stmt = (
-            select(ShiftReport)
-            .where(ShiftReport.tenant_id == tenant_id)
-            .order_by(ShiftReport.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+        params: CursorParams,
+    ) -> tuple[list[ShiftReport], str | None, str | None]:
+        stmt = select(ShiftReport).where(ShiftReport.tenant_id == tenant_id)
+        return await paginate_cursor(
+            self._db,
+            stmt=stmt,
+            params=params,
+            created_col=ShiftReport.created_at,
+            id_col=ShiftReport.id,
         )
-        count_stmt = (
-            select(func.count()).select_from(ShiftReport).where(ShiftReport.tenant_id == tenant_id)
-        )
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
 
     async def get_for_shift(self, *, tenant_id: uuid.UUID, shift_id: uuid.UUID) -> ShiftReport:
         stmt = select(ShiftReport).where(

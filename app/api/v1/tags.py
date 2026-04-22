@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_roles
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.room import Platform
 from app.models.user import Role
-from app.schemas.tag import TagCreate, TagListResponse, TagResponse, TagUpdate
+from app.schemas.tag import TagCreate, TagResponse, TagUpdate
 from app.services.errors import ServiceError
 from app.services.tag import TagService
 
@@ -48,18 +49,23 @@ async def create_tag(
         raise HTTPException(e.status_code, e.detail) from None
 
 
-@router.get("", response_model=TagListResponse, dependencies=[AnyAuthed])
+@router.get("", response_model=OffsetPage[TagResponse], dependencies=[AnyAuthed])
 async def list_tags(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     room_id: Annotated[uuid.UUID | None, Query()] = None,
     platform: Annotated[Platform | None, Query()] = None,
     active_only: Annotated[bool, Query()] = False,
 ):
     items, total = await svc.list_for_room(
-        tenant_id=tenant_id, room_id=room_id, platform=platform, active_only=active_only
+        tenant_id=tenant_id,
+        params=params,
+        room_id=room_id,
+        platform=platform,
+        active_only=active_only,
     )
-    return TagListResponse(items=[TagResponse.model_validate(x) for x in items], total=total)
+    return build_offset_page([TagResponse.model_validate(x) for x in items], total, params)
 
 
 @router.patch("/{tag_id}", response_model=TagResponse, dependencies=[MonitorUp])

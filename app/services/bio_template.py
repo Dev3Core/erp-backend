@@ -1,9 +1,10 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.html_sanitizer import sanitize_bio_html
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.bio_template import BioTemplate
 from app.services.errors import NotFoundError
 
@@ -35,19 +36,16 @@ class BioTemplateService:
         self,
         *,
         tenant_id: uuid.UUID,
+        params: OffsetParams,
         active_only: bool = False,
     ) -> tuple[list[BioTemplate], int]:
         stmt = select(BioTemplate).where(BioTemplate.tenant_id == tenant_id)
-        count_stmt = (
-            select(func.count()).select_from(BioTemplate).where(BioTemplate.tenant_id == tenant_id)
-        )
         if active_only:
             stmt = stmt.where(BioTemplate.is_active.is_(True))
-            count_stmt = count_stmt.where(BioTemplate.is_active.is_(True))
-        stmt = stmt.order_by(BioTemplate.created_at.desc())
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(BioTemplate.created_at.desc(), BioTemplate.id.desc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def get(self, *, tenant_id: uuid.UUID, template_id: uuid.UUID) -> BioTemplate:
         return await self._get_in_tenant(tenant_id=tenant_id, template_id=template_id)

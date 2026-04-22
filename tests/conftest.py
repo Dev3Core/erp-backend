@@ -31,7 +31,10 @@ def _set_sqlite_compat(dbapi_conn, _connection_record):
     from datetime import UTC, datetime
 
     dbapi_conn.create_function("gen_random_uuid", 0, lambda: str(uuid.uuid4()))
-    dbapi_conn.create_function("now", 0, lambda: datetime.now(UTC).isoformat())
+    # Match SQLAlchemy's space-separated datetime format so WHERE comparisons work.
+    dbapi_conn.create_function(
+        "now", 0, lambda: datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S.%f+00:00")
+    )
 
 
 class FakeRedis:

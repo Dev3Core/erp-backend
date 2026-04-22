@@ -9,9 +9,9 @@ class TestNotifications:
     async def test_list_empty_initially(self, owner_client_a: AsyncClient):
         resp = await owner_client_a.get("/api/v1/notifications")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["total"] == 0
-        assert data["unread_count"] == 0
+        assert resp.json()["items"] == []
+        unread = await owner_client_a.get("/api/v1/notifications/unread-count")
+        assert unread.json()["unread_count"] == 0
 
     async def test_mark_read_flow(self, owner_client_a: AsyncClient, tenant_a: dict):
         # Seed notifications directly via the DB.
@@ -33,14 +33,16 @@ class TestNotifications:
 
         listing = await owner_client_a.get("/api/v1/notifications")
         data = listing.json()
-        assert data["total"] == 3 and data["unread_count"] == 3
+        assert len(data["items"]) == 3
+        unread = await owner_client_a.get("/api/v1/notifications/unread-count")
+        assert unread.json()["unread_count"] == 3
         ids = [n["id"] for n in data["items"][:2]]
 
         resp = await owner_client_a.post("/api/v1/notifications/mark-read", json={"ids": ids})
         assert resp.status_code == 200 and resp.json()["marked"] == 2
 
-        after = await owner_client_a.get("/api/v1/notifications")
-        assert after.json()["unread_count"] == 1
+        unread_after = await owner_client_a.get("/api/v1/notifications/unread-count")
+        assert unread_after.json()["unread_count"] == 1
 
         mark_all = await owner_client_a.post("/api/v1/notifications/mark-all-read")
         assert mark_all.json()["marked"] == 1
@@ -81,4 +83,4 @@ class TestNotifications:
             assert len(owner_count) == 1  # only 1 in DB
 
         model_view = await model_client_a.get("/api/v1/notifications")
-        assert model_view.json()["total"] == 0
+        assert model_view.json()["items"] == []

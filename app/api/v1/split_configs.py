@@ -1,16 +1,16 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_roles
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.user import Role
 from app.schemas.split_config import (
     SplitConfigCreate,
-    SplitConfigListResponse,
     SplitConfigResponse,
     SplitConfigUpdate,
 )
@@ -53,17 +53,14 @@ async def create_split_config(
         raise HTTPException(e.status_code, e.detail) from None
 
 
-@router.get("", response_model=SplitConfigListResponse, dependencies=[AdminOrOwner])
+@router.get("", response_model=OffsetPage[SplitConfigResponse], dependencies=[AdminOrOwner])
 async def list_split_configs(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    params: Annotated[OffsetParams, Depends(offset_params)],
 ):
-    items, total = await svc.list(tenant_id=tenant_id, limit=limit, offset=offset)
-    return SplitConfigListResponse(
-        items=[SplitConfigResponse.model_validate(c) for c in items], total=total
-    )
+    items, total = await svc.list(tenant_id=tenant_id, params=params)
+    return build_offset_page([SplitConfigResponse.model_validate(c) for c in items], total, params)
 
 
 @router.get(

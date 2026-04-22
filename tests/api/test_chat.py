@@ -58,7 +58,7 @@ class TestChat:
         )
         assert r.status_code == 201
         listing = await owner_client_a.get(f"/api/v1/chat/shift/{shift_id}/messages")
-        assert listing.json()["total"] == 1
+        assert len(listing.json()["items"]) == 1
 
     async def test_non_participant_gets_403(
         self, owner_client_a: AsyncClient, model_client_a: AsyncClient

@@ -1,9 +1,10 @@
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.split_config import SplitConfig
 from app.services.errors import NotFoundError
 
@@ -42,22 +43,20 @@ class SplitConfigService:
         self,
         *,
         tenant_id: uuid.UUID,
-        limit: int = 50,
-        offset: int = 0,
+        params: OffsetParams,
     ) -> tuple[list[SplitConfig], int]:
         stmt = (
             select(SplitConfig)
             .where(SplitConfig.tenant_id == tenant_id)
-            .order_by(SplitConfig.is_default.desc(), SplitConfig.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+            .order_by(
+                SplitConfig.is_default.desc(),
+                SplitConfig.created_at.desc(),
+                SplitConfig.id.desc(),
+            )
         )
-        count_stmt = (
-            select(func.count()).select_from(SplitConfig).where(SplitConfig.tenant_id == tenant_id)
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
         )
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
 
     async def get(self, *, tenant_id: uuid.UUID, config_id: uuid.UUID) -> SplitConfig:
         return await self._get_in_tenant(tenant_id=tenant_id, config_id=config_id)

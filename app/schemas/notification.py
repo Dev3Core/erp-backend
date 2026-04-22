@@ -18,12 +18,6 @@ class NotificationResponse(BaseModel):
     created_at: datetime
 
 
-class NotificationListResponse(BaseModel):
-    items: list[NotificationResponse]
-    total: int
-    unread_count: int
-
-
 class NotificationMarkRead(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

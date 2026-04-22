@@ -2,9 +2,10 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.core.security import hash_password, verify_password
 from app.models.api_key import ApiKey
 from app.models.user import User
@@ -54,27 +55,19 @@ class ApiKeyService:
         *,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
+        params: OffsetParams,
         include_revoked: bool = False,
-        limit: int = 50,
-        offset: int = 0,
     ) -> tuple[list[ApiKey], int]:
         stmt = select(ApiKey).where(
             ApiKey.tenant_id == tenant_id,
             ApiKey.user_id == user_id,
         )
-        count_stmt = (
-            select(func.count())
-            .select_from(ApiKey)
-            .where(ApiKey.tenant_id == tenant_id, ApiKey.user_id == user_id)
-        )
         if not include_revoked:
             stmt = stmt.where(ApiKey.revoked_at.is_(None))
-            count_stmt = count_stmt.where(ApiKey.revoked_at.is_(None))
-
-        stmt = stmt.order_by(ApiKey.created_at.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(ApiKey.created_at.desc(), ApiKey.id.desc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def revoke(
         self,

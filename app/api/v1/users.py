@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_roles
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.user import Role
-from app.schemas.user import UserCreate, UserListResponse, UserResponse, UserUpdate
+from app.schemas.user import UserCreate, UserResponse, UserUpdate
 from app.services.errors import ServiceError
 from app.services.user import UserService
 
@@ -50,23 +51,18 @@ async def create_user(
     return user
 
 
-@router.get("", response_model=UserListResponse, dependencies=[AdminOrOwner])
+@router.get("", response_model=OffsetPage[UserResponse], dependencies=[AdminOrOwner])
 async def list_users(
     tenant_id: CurrentTenantId,
     svc: UserServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     role: Annotated[Role | None, Query()] = None,
     is_active: Annotated[bool | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     items, total = await svc.list(
-        tenant_id=tenant_id,
-        role=role,
-        is_active=is_active,
-        limit=limit,
-        offset=offset,
+        tenant_id=tenant_id, params=params, role=role, is_active=is_active
     )
-    return UserListResponse(items=[UserResponse.model_validate(u) for u in items], total=total)
+    return build_offset_page([UserResponse.model_validate(u) for u in items], total, params)
 
 
 @router.get("/{user_id}", response_model=UserResponse, dependencies=[AdminOrOwner])

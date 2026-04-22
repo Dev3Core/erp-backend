@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.exchange_rates import _get_service as _get_exchange_rate_service
 from app.core.dependencies import require_roles
+from app.core.pagination import CursorPage, CursorParams, build_cursor_page, cursor_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.liquidation import LiquidationStatus
 from app.models.user import Role
 from app.schemas.liquidation import (
     LiquidationCreateFromShift,
-    LiquidationListResponse,
     LiquidationResponse,
     LiquidationUpdate,
 )
@@ -59,28 +59,29 @@ async def create_from_shift(
         raise HTTPException(e.status_code, e.detail) from None
 
 
-@router.get("", response_model=LiquidationListResponse, dependencies=[AdminOrOwner])
+@router.get("", response_model=CursorPage[LiquidationResponse], dependencies=[AdminOrOwner])
 async def list_liquidations(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
+    params: Annotated[CursorParams, Depends(cursor_params)],
     status: Annotated[LiquidationStatus | None, Query()] = None,
     date_from: Annotated[date | None, Query()] = None,
     date_to: Annotated[date | None, Query()] = None,
     shift_id: Annotated[uuid.UUID | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    items, total = await svc.list(
+    items, next_cursor, prev_cursor = await svc.list(
         tenant_id=tenant_id,
+        params=params,
         status=status,
         date_from=date_from,
         date_to=date_to,
         shift_id=shift_id,
-        limit=limit,
-        offset=offset,
     )
-    return LiquidationListResponse(
-        items=[LiquidationResponse.model_validate(x) for x in items], total=total
+    return build_cursor_page(
+        [LiquidationResponse.model_validate(x) for x in items],
+        next_cursor,
+        prev_cursor,
+        params.limit,
     )
 
 

@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_roles
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.user import Role
 from app.schemas.technical_sheet import (
     TechnicalSheetCreate,
-    TechnicalSheetListResponse,
     TechnicalSheetResponse,
     TechnicalSheetUpdate,
 )
@@ -54,22 +54,20 @@ async def create_sheet(
         raise HTTPException(e.status_code, e.detail) from None
 
 
-@router.get("", response_model=TechnicalSheetListResponse, dependencies=[AnyAuthed])
+@router.get(
+    "",
+    response_model=OffsetPage[TechnicalSheetResponse],
+    dependencies=[AnyAuthed],
+)
 async def list_sheets(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     model_id: Annotated[uuid.UUID | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    items, total = await svc.list(
-        tenant_id=tenant_id,
-        model_id=model_id,
-        limit=limit,
-        offset=offset,
-    )
-    return TechnicalSheetListResponse(
-        items=[TechnicalSheetResponse.model_validate(s) for s in items], total=total
+    items, total = await svc.list(tenant_id=tenant_id, params=params, model_id=model_id)
+    return build_offset_page(
+        [TechnicalSheetResponse.model_validate(s) for s in items], total, params
     )
 
 

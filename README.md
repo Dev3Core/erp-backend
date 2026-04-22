@@ -417,6 +417,7 @@ La carpeta [`docs/`](docs/) contiene guías largas que no caben en el README:
 | Documento | Contenido |
 |-----------|-----------|
 | [`docs/frontend-auth.md`](docs/frontend-auth.md) | Cómo consumir la API desde el frontend — login, `GET /auth/me`, store, refresh, protección de rutas. |
+| [`docs/pagination.md`](docs/pagination.md) | Contrato de paginación (offset vs cursor), cuándo usar cada uno, plantillas para nuevos endpoints. |
 
 ---
 

@@ -1,8 +1,9 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.technical_sheet import TechnicalSheet
 from app.models.user import Role, User
 from app.services.errors import NotFoundError, ValidationError
@@ -41,24 +42,16 @@ class TechnicalSheetService:
         self,
         *,
         tenant_id: uuid.UUID,
+        params: OffsetParams,
         model_id: uuid.UUID | None = None,
-        limit: int = 50,
-        offset: int = 0,
     ) -> tuple[list[TechnicalSheet], int]:
         stmt = select(TechnicalSheet).where(TechnicalSheet.tenant_id == tenant_id)
-        count_stmt = (
-            select(func.count())
-            .select_from(TechnicalSheet)
-            .where(TechnicalSheet.tenant_id == tenant_id)
-        )
         if model_id is not None:
             stmt = stmt.where(TechnicalSheet.model_id == model_id)
-            count_stmt = count_stmt.where(TechnicalSheet.model_id == model_id)
-
-        stmt = stmt.order_by(TechnicalSheet.created_at.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(TechnicalSheet.created_at.desc(), TechnicalSheet.id.desc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def get(self, *, tenant_id: uuid.UUID, sheet_id: uuid.UUID) -> TechnicalSheet:
         return await self._get_in_tenant(tenant_id=tenant_id, sheet_id=sheet_id)

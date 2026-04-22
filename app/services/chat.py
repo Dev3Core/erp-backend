@@ -1,8 +1,9 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import CursorParams, paginate_cursor
 from app.models.chat_message import ChatMessage
 from app.models.shift import Shift
 from app.models.user import Role, User
@@ -39,25 +40,19 @@ class ChatService:
         tenant_id: uuid.UUID,
         shift_id: uuid.UUID,
         actor: User,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> tuple[list[ChatMessage], int]:
+        params: CursorParams,
+    ) -> tuple[list[ChatMessage], str | None, str | None]:
         await self._ensure_participant(tenant_id=tenant_id, shift_id=shift_id, user=actor)
-        stmt = (
-            select(ChatMessage)
-            .where(ChatMessage.tenant_id == tenant_id, ChatMessage.shift_id == shift_id)
-            .order_by(ChatMessage.created_at.asc())
-            .limit(limit)
-            .offset(offset)
+        stmt = select(ChatMessage).where(
+            ChatMessage.tenant_id == tenant_id, ChatMessage.shift_id == shift_id
         )
-        count_stmt = (
-            select(func.count())
-            .select_from(ChatMessage)
-            .where(ChatMessage.tenant_id == tenant_id, ChatMessage.shift_id == shift_id)
+        return await paginate_cursor(
+            self._db,
+            stmt=stmt,
+            params=params,
+            created_col=ChatMessage.created_at,
+            id_col=ChatMessage.id,
         )
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
 
     async def _ensure_participant(
         self, *, tenant_id: uuid.UUID, shift_id: uuid.UUID, user: User
