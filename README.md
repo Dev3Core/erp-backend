@@ -19,10 +19,12 @@ Backend multi-tenant SaaS para la gestión integral de estudios webcam: autentic
 - [Ejecución con Docker](#ejecución-con-docker)
 - [Variables de entorno](#variables-de-entorno)
 - [API](#api)
+- [Integración con el frontend](#integración-con-el-frontend)
 - [Seguridad](#seguridad)
 - [Testing](#testing)
 - [Comandos (Makefile)](#comandos-makefile)
 - [CI/CD](#cicd)
+- [Documentación adicional](#documentación-adicional)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Contribuir](#contribuir)
 - [Licencia](#licencia)
@@ -224,6 +226,32 @@ Documentación interactiva completa en `/docs` (Swagger) y `/redoc` (ReDoc).
 
 ---
 
+## Integración con el frontend
+
+Guía completa paso a paso (Next.js 16 / React) en [`docs/frontend-auth.md`](docs/frontend-auth.md). Cubre:
+
+- Flujo login → `GET /auth/me` → store de sesión.
+- Tipado de `Me` + ejemplo con Zustand.
+- Hook `useHasRole(...)` para gating de UI.
+- Cuándo refrescar `/me` (bootstrap, tras MFA, etc.).
+- Interceptor de 401 y refresh automático del access token.
+- Protección de rutas en Next.js: middleware + layout cliente + server components.
+- CORS + cookies cross-origin en producción.
+
+Resumen rápido:
+
+| Necesidad del front              | De dónde la saca                                  |
+|----------------------------------|---------------------------------------------------|
+| ¿Hay sesión activa?              | `GET /auth/me` devuelve 200 vs 401                |
+| Rol del usuario                  | `me.role` del store (tras `/auth/me`)             |
+| Tenant + slug del estudio        | `me.tenant_id`, `me.studio_slug`                  |
+| Decisiones de UX (mostrar botón) | Rol del store — **nunca** es decisión de seguridad |
+| Authorization real               | Backend revalida cada request contra DB → 403     |
+
+> Las cookies son `HttpOnly`: el JavaScript del front **no puede** leer el JWT. No intentes decodificarlo, llama `/auth/me`.
+
+---
+
 ## Seguridad
 
 ### Medidas activas
@@ -339,6 +367,16 @@ GitHub Actions corre dos jobs en paralelo en cada PR hacia `main`:
 2. **`security-scan`** — SAST (bandit + ruff-S), SCA (pip-audit), secrets (detect-secrets vs baseline), y Semgrep OWASP.
 
 Cualquiera que falle bloquea el merge. Configuración en [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+---
+
+## Documentación adicional
+
+La carpeta [`docs/`](docs/) contiene guías largas que no caben en el README:
+
+| Documento | Contenido |
+|-----------|-----------|
+| [`docs/frontend-auth.md`](docs/frontend-auth.md) | Cómo consumir la API desde el frontend — login, `GET /auth/me`, store, refresh, protección de rutas. |
 
 ---
 
