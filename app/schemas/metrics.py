@@ -45,3 +45,41 @@ class RevenueByModelResponse(BaseModel):
 class RevenueByMonitorResponse(BaseModel):
     items: list[RevenueByMonitorItem]
     total: int
+
+
+class RevenueByPlatformItem(BaseModel):
+    platform: str
+    total_shifts: int
+    total_tokens: int
+    total_usd: Decimal
+
+
+class RevenueByPlatformResponse(BaseModel):
+    items: list[RevenueByPlatformItem]
+
+
+class DailyRevenueItem(BaseModel):
+    day: date
+    total_shifts: int
+    total_tokens: int
+    total_usd: Decimal
+
+
+class DailyRevenueResponse(BaseModel):
+    items: list[DailyRevenueItem]
+
+
+class ModelOverviewResponse(BaseModel):
+    model_id: uuid.UUID
+    period_from: date | None
+    period_to: date | None
+    total_shifts: int
+    total_tokens: int
+    total_usd: Decimal
+
+
+class BestMonitorResponse(BaseModel):
+    monitor_id: uuid.UUID
+    full_name: str
+    total_shifts: int
+    total_usd: Decimal

@@ -50,7 +50,8 @@
     ],
     "additionalDirectories": [
       "/Users/bultoesal/Documents/Personales/erp/erp-backend/.claude/skills",
-      "/tmp"
+      "/tmp",
+      "/Users/bultoesal/Documents/Personales/erp"
     ]
   }
 }
