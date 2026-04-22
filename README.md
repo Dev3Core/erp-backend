@@ -210,6 +210,7 @@ Diferencias con desarrollo:
 | POST   | `/login`       | Login; setea `access_token` + `refresh_token` cookies | Público  | 5 / min / IP     |
 | POST   | `/refresh`     | Rota access + refresh, blacklistea el anterior      | Cookie   | —                |
 | POST   | `/logout`      | Invalida tokens en Redis (blacklist)                | Cookie   | —                |
+| GET    | `/me`          | Datos de sesión (rol, tenant, slug, flags)          | JWT      | —                |
 | POST   | `/mfa/setup`   | Genera secreto TOTP + `otpauth://` URI              | JWT      | —                |
 | POST   | `/mfa/verify`  | Valida código TOTP; activa MFA en primer verify      | JWT      | 5 / min / user   |
 
@@ -231,7 +232,7 @@ Documentación interactiva completa en `/docs` (Swagger) y `/redoc` (ReDoc).
 |---------------------|----------------------------------------------------------------------------------------------|
 | Transport           | HSTS (`max-age=63072000`), cookies `Secure` en prod, CORS con allowlist explícita            |
 | Headers             | CSP `default-src 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, COOP, CORP, `Permissions-Policy` |
-| Autenticación       | argon2 password hashing, JWT firmado HS256, rotación de refresh token, blacklist Redis       |
+| Autenticación       | argon2 password hashing, JWT firmado HS256 con payload mínimo (solo `sub` + flags de sesión; rol y tenant se leen de DB en cada request y se exponen al front vía `GET /auth/me`), rotación de refresh token, blacklist Redis |
 | Sesiones            | Cookies `HttpOnly` + `SameSite=Lax` + `Secure` (prod)                                        |
 | MFA                 | TOTP (pyotp), verificación obligatoria para acciones sensibles                               |
 | Rate limiting       | Redis INCR/EXPIRE por IP o user id en endpoints críticos; responde 429 + `Retry-After`       |

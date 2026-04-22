@@ -46,8 +46,12 @@ class MFAVerifyResponse(BaseModel):
     detail: str = "MFA activated"
 
 
-class UserPayload(BaseModel):
-    sub: str
-    tenant_id: str
+class MeResponse(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    full_name: str
     role: str
-    mfa_verified: bool
+    is_active: bool
+    mfa_enabled: bool
+    tenant_id: uuid.UUID
+    studio_slug: str
