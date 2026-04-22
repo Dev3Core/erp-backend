@@ -1,7 +1,8 @@
 import uuid
 from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import APIKeyCookie
 from jose import JWTError
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -12,11 +13,13 @@ from app.database import get_db
 from app.models.user import Role, User
 from app.redis import get_redis
 
+_access_cookie_scheme = APIKeyCookie(name="access_token", auto_error=False)
+
 
 async def _get_current_user(
     db: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
-    access_token: Annotated[str | None, Cookie()] = None,
+    access_token: Annotated[str | None, Depends(_access_cookie_scheme)] = None,
 ) -> User:
     if access_token is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")

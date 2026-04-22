@@ -1,26 +1,13 @@
-import contextlib
 import uuid
-from contextvars import ContextVar
+from typing import Annotated
 
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response
+from fastapi import Depends
 
-_current_tenant_id: ContextVar[uuid.UUID | None] = ContextVar("current_tenant_id", default=None)
+from app.core.dependencies import CurrentUser
 
 
-def get_current_tenant_id() -> uuid.UUID | None:
-    return _current_tenant_id.get()
+async def _get_current_tenant_id(user: CurrentUser) -> uuid.UUID:
+    return user.tenant_id
 
 
-def set_current_tenant_id(tenant_id: uuid.UUID) -> None:
-    _current_tenant_id.set(tenant_id)
-
-
-class TenantMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        tenant_header = request.headers.get("X-Tenant-ID")
-        if tenant_header:
-            with contextlib.suppress(ValueError):
-                set_current_tenant_id(uuid.UUID(tenant_header))
-        return await call_next(request)
+CurrentTenantId = Annotated[uuid.UUID, Depends(_get_current_tenant_id)]
