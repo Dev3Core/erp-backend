@@ -16,7 +16,9 @@
       "Bash(echo \"baseline rows: $\\(python -c \"import json; d=json.load\\(open\\('.secrets.baseline'\\)\\);print\\(sum\\(len\\(v\\) for v in d['results'].values\\(\\)\\)\\)\"\\)\")",
       "Bash(make security-scan *)",
       "Bash(make test *)",
-      "Bash(make lint *)"
+      "Bash(make lint *)",
+      "Bash(git fetch *)",
+      "Bash(git branch *)"
     ],
     "additionalDirectories": [
       "/Users/bultoesal/Documents/Personales/erp/erp-backend/.claude/skills",

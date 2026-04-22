@@ -12,9 +12,7 @@ async def _actions_for_email(email: str) -> list[str]:
     async with TestingSession() as session:
         user = (await session.execute(select(User).where(User.email == email))).scalar_one()
         rows = await session.execute(
-            select(AuditLog)
-            .where(AuditLog.user_id == user.id)
-            .order_by(AuditLog.created_at)
+            select(AuditLog).where(AuditLog.user_id == user.id).order_by(AuditLog.created_at)
         )
         return [row.action for row in rows.scalars().all()]
 
