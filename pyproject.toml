@@ -32,6 +32,9 @@ qrcode = { version = "^7.4.0", extras = ["pil"] }
 email-validator = "^2.0.0"
 bleach = { version = "^6.2.0", extras = ["css"] }
 reportlab = "^4.2.0"
+# Pinned for CVEs (transitive otherwise)
+protobuf = "^5.29.6"  # GHSA-7gcm-g887-7qv7
+mako = "^1.3.11"  # GHSA-v92g-xgxw-vvmm (alembic transitive)
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.3"
