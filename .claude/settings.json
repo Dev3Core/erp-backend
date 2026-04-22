@@ -46,7 +46,8 @@
       "Bash(curl -sS -c /tmp/erp2.cookies -o /dev/null -X POST http://localhost:8000/api/v1/auth/login -H 'Content-Type: application/json' -d '{\"email\":\"oy@example.com\",\"password\":\"StrongPass123\"}')",
       "Bash(curl -sS -b /tmp/erp.cookies http://localhost:8000/api/v1/users)",
       "Bash(python -m json.tool)",
-      "Bash(curl -sS -w '\\\\nHTTP:%{http_code}\\\\n' -X POST http://localhost:8000/api/v1/auth/register -H 'Content-Type: application/json' -d '{\"studio_name\":\"Fresh\",\"full_name\":\"Fresh Owner\",\"email\":\"fresh@example.com\",\"password\":\"StrongPass123\"}')"
+      "Bash(curl -sS -w '\\\\nHTTP:%{http_code}\\\\n' -X POST http://localhost:8000/api/v1/auth/register -H 'Content-Type: application/json' -d '{\"studio_name\":\"Fresh\",\"full_name\":\"Fresh Owner\",\"email\":\"fresh@example.com\",\"password\":\"StrongPass123\"}')",
+      "Bash(gh api *)"
     ],
     "additionalDirectories": [
       "/Users/bultoesal/Documents/Personales/erp/erp-backend/.claude/skills",
