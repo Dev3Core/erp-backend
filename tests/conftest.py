@@ -141,6 +141,104 @@ async def seed_tenant_and_owner() -> dict:
         }
 
 
+async def _create_tenant_with_owner(
+    name: str, slug: str, owner_email: str, owner_password: str = "SecurePass123"
+) -> dict:
+    async with TestingSession() as session:
+        tenant = Tenant(id=uuid.uuid4(), name=name, slug=slug)
+        session.add(tenant)
+        await session.flush()
+
+        owner = User(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            email=owner_email,
+            hashed_password=hash_password(owner_password),
+            full_name=f"Owner {name}",
+            role=Role.OWNER,
+        )
+        session.add(owner)
+        await session.flush()
+        tenant.owner_id = owner.id
+        await session.commit()
+
+        return {
+            "tenant_id": str(tenant.id),
+            "owner_id": str(owner.id),
+            "owner_email": owner_email,
+            "owner_password": owner_password,
+            "slug": slug,
+        }
+
+
+async def _create_user_in_tenant(
+    tenant_id: str, email: str, role: Role, password: str = "SecurePass123"
+) -> dict:
+    async with TestingSession() as session:
+        user = User(
+            id=uuid.uuid4(),
+            tenant_id=uuid.UUID(tenant_id),
+            email=email,
+            hashed_password=hash_password(password),
+            full_name=f"{role.value} {email}",
+            role=role,
+        )
+        session.add(user)
+        await session.commit()
+        return {"user_id": str(user.id), "email": email, "password": password}
+
+
+async def _login(client: AsyncClient, email: str, password: str) -> AsyncClient:
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password},
+    )
+    assert resp.status_code == 200, f"login failed: {resp.text}"
+    return client
+
+
+@pytest.fixture
+async def tenant_a() -> dict:
+    return await _create_tenant_with_owner("Studio A", "studio-a", "owner_a@example.com")
+
+
+@pytest.fixture
+async def tenant_b() -> dict:
+    return await _create_tenant_with_owner("Studio B", "studio-b", "owner_b@example.com")
+
+
+@pytest.fixture
+async def owner_client_a(tenant_a: dict) -> AsyncGenerator[AsyncClient, None]:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await _login(ac, tenant_a["owner_email"], tenant_a["owner_password"])
+        yield ac
+
+
+@pytest.fixture
+async def owner_client_b(tenant_b: dict) -> AsyncGenerator[AsyncClient, None]:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await _login(ac, tenant_b["owner_email"], tenant_b["owner_password"])
+        yield ac
+
+
+@pytest.fixture
+async def model_client_a(tenant_a: dict) -> AsyncGenerator[AsyncClient, None]:
+    model = await _create_user_in_tenant(tenant_a["tenant_id"], "model_a@example.com", Role.MODEL)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await _login(ac, model["email"], model["password"])
+        yield ac
+
+
+@pytest.fixture
+async def monitor_client_a(tenant_a: dict) -> AsyncGenerator[AsyncClient, None]:
+    monitor = await _create_user_in_tenant(
+        tenant_a["tenant_id"], "monitor_a@example.com", Role.MONITOR
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        await _login(ac, monitor["email"], monitor["password"])
+        yield ac
+
+
 @pytest.fixture
 async def inactive_tenant_user() -> dict:
     async with TestingSession() as session:

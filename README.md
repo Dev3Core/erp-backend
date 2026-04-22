@@ -19,10 +19,12 @@ Backend multi-tenant SaaS para la gestión integral de estudios webcam: autentic
 - [Ejecución con Docker](#ejecución-con-docker)
 - [Variables de entorno](#variables-de-entorno)
 - [API](#api)
+- [Integración con el frontend](#integración-con-el-frontend)
 - [Seguridad](#seguridad)
 - [Testing](#testing)
 - [Comandos (Makefile)](#comandos-makefile)
 - [CI/CD](#cicd)
+- [Documentación adicional](#documentación-adicional)
 - [Estructura del proyecto](#estructura-del-proyecto)
 - [Contribuir](#contribuir)
 - [Licencia](#licencia)
@@ -102,50 +104,33 @@ Detalles en [.claude/skills/clean-architecture/SKILL.md](.claude/skills/clean-ar
 
 ## Inicio rápido
 
-### 1. Clonar e instalar
+**Opción recomendada — Docker Compose (todo en uno, migraciones automáticas):**
 
 ```bash
 git clone https://github.com/Dev3Core/erp-backend.git
 cd erp-backend
-poetry install --with dev
-```
-
-### 2. Configurar variables de entorno
-
-```bash
 cp .env.example .env
-python -c "import secrets; print(secrets.token_urlsafe(64))"  # generar JWT_SECRET
-# Pegar el valor generado en JWT_SECRET dentro de .env
+# Generar JWT_SECRET (>= 64 chars) y pegarlo en .env:
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+make dev
 ```
+
+`make dev` levanta Postgres + Redis + un job `migrate` (que corre `alembic upgrade head`) + API con hot-reload + worker ARQ. El `api` y el `worker` dependen de `migrate: service_completed_successfully`, por lo que cada `docker compose up` aplica migraciones pendientes antes de arrancar la app.
 
 > `JWT_SECRET` es **obligatorio** y debe tener al menos 64 caracteres. La app falla al arrancar si falta o contiene un placeholder.
 
-### 3. Levantar infraestructura
-
-```bash
-docker compose -f .docker/compose.yml up postgres redis -d
-```
-
-### 4. Aplicar migraciones
-
-```bash
-make migrate
-# o: poetry run alembic upgrade head
-```
-
-### 5. Servidor de desarrollo
-
-```bash
-poetry run uvicorn app.main:app --reload --port 8000
-```
-
-### 6. Worker ARQ (terminal aparte)
-
-```bash
-poetry run arq app.workers.tasks.WorkerSettings
-```
-
 API: `http://localhost:8000` · OpenAPI: `http://localhost:8000/docs` · Health: `http://localhost:8000/api/v1/health`.
+
+**Opción sin Docker (host local):**
+
+```bash
+poetry install --with dev
+cp .env.example .env                                              # + setear JWT_SECRET
+docker compose -f .docker/compose.yml up postgres redis -d       # solo infra
+make migrate                                                       # alembic upgrade head
+poetry run uvicorn app.main:app --reload --port 8000              # API
+poetry run arq app.workers.tasks.WorkerSettings                   # worker (otra terminal)
+```
 
 ---
 
@@ -158,7 +143,17 @@ make dev
 # equivalente: docker compose -f .docker/compose.yml up --build
 ```
 
-Monta `app/`, `alembic/` y `tests/` como volúmenes. Cambios se reflejan sin rebuild.
+Servicios que se levantan:
+
+| Servicio  | Rol                                                                 |
+|-----------|---------------------------------------------------------------------|
+| postgres  | Base de datos                                                       |
+| redis     | Cache + broker ARQ                                                  |
+| migrate   | Job one-shot (`alembic upgrade head`). `api` y `worker` lo esperan  |
+| api       | FastAPI con hot-reload (puerto 8000)                                |
+| worker    | ARQ worker para jobs en background                                  |
+
+Monta `app/`, `alembic/` y `tests/` como volúmenes. Cambios se reflejan sin rebuild. Cada `docker compose up` vuelve a correr `migrate`, que es idempotente — aplica solo las migraciones pendientes.
 
 ### Producción
 
@@ -217,6 +212,7 @@ Diferencias con desarrollo:
 | POST   | `/login`       | Login; setea `access_token` + `refresh_token` cookies | Público  | 5 / min / IP     |
 | POST   | `/refresh`     | Rota access + refresh, blacklistea el anterior      | Cookie   | —                |
 | POST   | `/logout`      | Invalida tokens en Redis (blacklist)                | Cookie   | —                |
+| GET    | `/me`          | Datos de sesión (rol, tenant, slug, flags)          | JWT      | —                |
 | POST   | `/mfa/setup`   | Genera secreto TOTP + `otpauth://` URI              | JWT      | —                |
 | POST   | `/mfa/verify`  | Valida código TOTP; activa MFA en primer verify      | JWT      | 5 / min / user   |
 
@@ -230,6 +226,32 @@ Documentación interactiva completa en `/docs` (Swagger) y `/redoc` (ReDoc).
 
 ---
 
+## Integración con el frontend
+
+Guía completa paso a paso (Next.js 16 / React) en [`docs/frontend-auth.md`](docs/frontend-auth.md). Cubre:
+
+- Flujo login → `GET /auth/me` → store de sesión.
+- Tipado de `Me` + ejemplo con Zustand.
+- Hook `useHasRole(...)` para gating de UI.
+- Cuándo refrescar `/me` (bootstrap, tras MFA, etc.).
+- Interceptor de 401 y refresh automático del access token.
+- Protección de rutas en Next.js: middleware + layout cliente + server components.
+- CORS + cookies cross-origin en producción.
+
+Resumen rápido:
+
+| Necesidad del front              | De dónde la saca                                  |
+|----------------------------------|---------------------------------------------------|
+| ¿Hay sesión activa?              | `GET /auth/me` devuelve 200 vs 401                |
+| Rol del usuario                  | `me.role` del store (tras `/auth/me`)             |
+| Tenant + slug del estudio        | `me.tenant_id`, `me.studio_slug`                  |
+| Decisiones de UX (mostrar botón) | Rol del store — **nunca** es decisión de seguridad |
+| Authorization real               | Backend revalida cada request contra DB → 403     |
+
+> Las cookies son `HttpOnly`: el JavaScript del front **no puede** leer el JWT. No intentes decodificarlo, llama `/auth/me`.
+
+---
+
 ## Seguridad
 
 ### Medidas activas
@@ -238,7 +260,7 @@ Documentación interactiva completa en `/docs` (Swagger) y `/redoc` (ReDoc).
 |---------------------|----------------------------------------------------------------------------------------------|
 | Transport           | HSTS (`max-age=63072000`), cookies `Secure` en prod, CORS con allowlist explícita            |
 | Headers             | CSP `default-src 'self'; frame-ancestors 'none'`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, COOP, CORP, `Permissions-Policy` |
-| Autenticación       | argon2 password hashing, JWT firmado HS256, rotación de refresh token, blacklist Redis       |
+| Autenticación       | argon2 password hashing, JWT firmado HS256 con payload mínimo (solo `sub` + flags de sesión; rol y tenant se leen de DB en cada request y se exponen al front vía `GET /auth/me`), rotación de refresh token, blacklist Redis |
 | Sesiones            | Cookies `HttpOnly` + `SameSite=Lax` + `Secure` (prod)                                        |
 | MFA                 | TOTP (pyotp), verificación obligatoria para acciones sensibles                               |
 | Rate limiting       | Redis INCR/EXPIRE por IP o user id en endpoints críticos; responde 429 + `Retry-After`       |
@@ -345,6 +367,16 @@ GitHub Actions corre dos jobs en paralelo en cada PR hacia `main`:
 2. **`security-scan`** — SAST (bandit + ruff-S), SCA (pip-audit), secrets (detect-secrets vs baseline), y Semgrep OWASP.
 
 Cualquiera que falle bloquea el merge. Configuración en [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+---
+
+## Documentación adicional
+
+La carpeta [`docs/`](docs/) contiene guías largas que no caben en el README:
+
+| Documento | Contenido |
+|-----------|-----------|
+| [`docs/frontend-auth.md`](docs/frontend-auth.md) | Cómo consumir la API desde el frontend — login, `GET /auth/me`, store, refresh, protección de rutas. |
 
 ---
 

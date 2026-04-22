@@ -12,6 +12,7 @@ from app.redis import get_redis
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    MeResponse,
     MFASetupResponse,
     MFAVerifyRequest,
     MFAVerifyResponse,
@@ -167,3 +168,21 @@ async def mfa_verify(
     access, refresh = svc.create_token_pair(user, mfa_verified=True)
     _set_tokens(response, access, refresh)
     return MFAVerifyResponse()
+
+
+@router.get("/me", response_model=MeResponse)
+async def me(user: CurrentUser, svc: AuthServiceDep):
+    try:
+        me_user, tenant = await svc.get_session_info(user)
+    except AuthError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+    return MeResponse(
+        user_id=me_user.id,
+        email=me_user.email,
+        full_name=me_user.full_name,
+        role=me_user.role.value,
+        is_active=me_user.is_active,
+        mfa_enabled=me_user.mfa_enabled,
+        tenant_id=tenant.id,
+        studio_slug=tenant.slug,
+    )

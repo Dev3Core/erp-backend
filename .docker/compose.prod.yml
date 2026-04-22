@@ -50,6 +50,23 @@ services:
     networks:
       - backend
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile
+      target: production
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - ../.env.production
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
   api:
     build:
       context: ..
@@ -71,6 +88,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
@@ -103,6 +122,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:

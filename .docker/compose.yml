@@ -34,6 +34,24 @@ services:
       timeout: 3s
       retries: 5
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: .docker/Dockerfile.dev
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://erp:erp_local@postgres:5432/erp_webcam
+    volumes:
+      - ../app:/app/app:cached
+      - ../alembic:/app/alembic:cached
+      - ../alembic.ini:/app/alembic.ini:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: ..
@@ -57,6 +75,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -76,6 +96,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

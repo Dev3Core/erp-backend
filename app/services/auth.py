@@ -105,15 +105,22 @@ class AuthService:
         return user
 
     def create_token_pair(self, user: User, *, mfa_verified: bool = False) -> tuple[str, str]:
+        # Minimal payload: identity + session flags only. Role and tenant are NOT in
+        # the JWT — callers fetch them via GET /auth/me and the backend always reads
+        # them from the DB-loaded User in request deps.
         jti = uuid.uuid4().hex
         payload = {
             "sub": str(user.id),
-            "tenant_id": str(user.tenant_id),
-            "role": user.role.value,
             "mfa_verified": mfa_verified,
             "jti": jti,
         }
         return create_access_token(payload), create_refresh_token(payload)
+
+    async def get_session_info(self, user: User) -> tuple[User, Tenant]:
+        tenant = await self._db.get(Tenant, user.tenant_id)
+        if tenant is None:
+            raise AuthError("Tenant not found", status_code=404)
+        return user, tenant
 
     async def refresh_tokens(self, refresh_token: str) -> tuple[str, str, dict]:
         payload = decode_token(refresh_token)
