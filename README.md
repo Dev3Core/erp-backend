@@ -102,50 +102,33 @@ Detalles en [.claude/skills/clean-architecture/SKILL.md](.claude/skills/clean-ar
 
 ## Inicio rápido
 
-### 1. Clonar e instalar
+**Opción recomendada — Docker Compose (todo en uno, migraciones automáticas):**
 
 ```bash
 git clone https://github.com/Dev3Core/erp-backend.git
 cd erp-backend
-poetry install --with dev
-```
-
-### 2. Configurar variables de entorno
-
-```bash
 cp .env.example .env
-python -c "import secrets; print(secrets.token_urlsafe(64))"  # generar JWT_SECRET
-# Pegar el valor generado en JWT_SECRET dentro de .env
+# Generar JWT_SECRET (>= 64 chars) y pegarlo en .env:
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+make dev
 ```
+
+`make dev` levanta Postgres + Redis + un job `migrate` (que corre `alembic upgrade head`) + API con hot-reload + worker ARQ. El `api` y el `worker` dependen de `migrate: service_completed_successfully`, por lo que cada `docker compose up` aplica migraciones pendientes antes de arrancar la app.
 
 > `JWT_SECRET` es **obligatorio** y debe tener al menos 64 caracteres. La app falla al arrancar si falta o contiene un placeholder.
 
-### 3. Levantar infraestructura
-
-```bash
-docker compose -f .docker/compose.yml up postgres redis -d
-```
-
-### 4. Aplicar migraciones
-
-```bash
-make migrate
-# o: poetry run alembic upgrade head
-```
-
-### 5. Servidor de desarrollo
-
-```bash
-poetry run uvicorn app.main:app --reload --port 8000
-```
-
-### 6. Worker ARQ (terminal aparte)
-
-```bash
-poetry run arq app.workers.tasks.WorkerSettings
-```
-
 API: `http://localhost:8000` · OpenAPI: `http://localhost:8000/docs` · Health: `http://localhost:8000/api/v1/health`.
+
+**Opción sin Docker (host local):**
+
+```bash
+poetry install --with dev
+cp .env.example .env                                              # + setear JWT_SECRET
+docker compose -f .docker/compose.yml up postgres redis -d       # solo infra
+make migrate                                                       # alembic upgrade head
+poetry run uvicorn app.main:app --reload --port 8000              # API
+poetry run arq app.workers.tasks.WorkerSettings                   # worker (otra terminal)
+```
 
 ---
 
@@ -158,7 +141,17 @@ make dev
 # equivalente: docker compose -f .docker/compose.yml up --build
 ```
 
-Monta `app/`, `alembic/` y `tests/` como volúmenes. Cambios se reflejan sin rebuild.
+Servicios que se levantan:
+
+| Servicio  | Rol                                                                 |
+|-----------|---------------------------------------------------------------------|
+| postgres  | Base de datos                                                       |
+| redis     | Cache + broker ARQ                                                  |
+| migrate   | Job one-shot (`alembic upgrade head`). `api` y `worker` lo esperan  |
+| api       | FastAPI con hot-reload (puerto 8000)                                |
+| worker    | ARQ worker para jobs en background                                  |
+
+Monta `app/`, `alembic/` y `tests/` como volúmenes. Cambios se reflejan sin rebuild. Cada `docker compose up` vuelve a correr `migrate`, que es idempotente — aplica solo las migraciones pendientes.
 
 ### Producción
 
