@@ -206,15 +206,55 @@ Diferencias con desarrollo:
 
 ### `/api/v1/auth`
 
-| Método | Ruta           | Descripción                                         | Auth     | Rate limit       |
-|--------|----------------|-----------------------------------------------------|----------|------------------|
-| POST   | `/register`    | Crea tenant + owner. Retorna IDs y slug             | Público  | 3 / min / IP     |
-| POST   | `/login`       | Login; setea `access_token` + `refresh_token` cookies | Público  | 5 / min / IP     |
-| POST   | `/refresh`     | Rota access + refresh, blacklistea el anterior      | Cookie   | —                |
-| POST   | `/logout`      | Invalida tokens en Redis (blacklist)                | Cookie   | —                |
-| GET    | `/me`          | Datos de sesión (rol, tenant, slug, flags)          | JWT      | —                |
-| POST   | `/mfa/setup`   | Genera secreto TOTP + `otpauth://` URI              | JWT      | —                |
-| POST   | `/mfa/verify`  | Valida código TOTP; activa MFA en primer verify      | JWT      | 5 / min / user   |
+| Método | Ruta                   | Descripción                                               | Auth     | Rate limit       |
+|--------|------------------------|-----------------------------------------------------------|----------|------------------|
+| POST   | `/register`            | Crea tenant + owner. Retorna IDs y slug                   | Público  | 3 / min / IP     |
+| POST   | `/login`               | Login; setea `access_token` + `refresh_token` cookies     | Público  | 5 / min / IP     |
+| POST   | `/refresh`             | Rota access + refresh, blacklistea el anterior            | Cookie   | —                |
+| POST   | `/logout`              | Invalida tokens en Redis (blacklist)                      | Cookie   | —                |
+| GET    | `/me`                  | Datos de sesión (rol, tenant, slug, flags)                | JWT      | —                |
+| POST   | `/mfa/setup`           | Genera secreto TOTP + `otpauth://` URI                    | JWT      | —                |
+| POST   | `/mfa/verify`          | Valida código TOTP; activa MFA en primer verify            | JWT      | 5 / min / user   |
+| POST   | `/api-keys`            | Emite API key efímera (extensión Chrome). Retorna el plaintext una sola vez | JWT | — |
+| GET    | `/api-keys`            | Lista las keys del usuario actual                         | JWT      | —                |
+| DELETE | `/api-keys/{id}`       | Revoca una key propia                                     | JWT      | —                |
+
+### Recursos tenant-scoped (OWNER/ADMIN write; read varía por rol)
+
+| Método / Ruta | Descripción |
+|-------------|-------------|
+| `POST/GET/PATCH/DELETE /users` | Gestiona usuarios del estudio (MONITOR/MODEL). OWNER no asignable; solo OWNER puede promover a ADMIN |
+| `POST/GET/PATCH/DELETE /rooms` | Cuentas de Chaturbate/Stripchat (soft delete, unique por plataforma+url) |
+| `POST/GET/PATCH/DELETE /split-configs` | % platform/studio/model (suma 100, un default por tenant) |
+| `POST/GET/PATCH/DELETE /technical-sheets` | Ficha de modelo (bio, idiomas, categorías, notas) |
+| `POST/GET/PATCH/DELETE /shifts` | Turnos (model + room + monitor opcional + tiempos) |
+
+### Liquidaciones y sueldos
+
+| Método / Ruta | Descripción |
+|-------------|-------------|
+| `POST /liquidations/from-shift` | Crea liquidación desde shift FINISHED: aplica split, convierte USD→COP con TRM |
+| `GET /liquidations` | Lista con filtros por status, rango de fechas, shift_id |
+| `PATCH /liquidations/{id}` | Transición de estado: PENDING → APPROVED → PAID (y APPROVED ↔ PENDING) |
+| `DELETE /liquidations/{id}` | Elimina (bloqueado si PAID) |
+| `POST/GET/DELETE /monitor-salaries` | Historial de sueldos por monitor (append-only) |
+| `GET /monitor-salaries/current/{monitor_id}` | Sueldo vigente en una fecha |
+
+### Métricas (owner dashboard)
+
+| Método / Ruta | Descripción |
+|-------------|-------------|
+| `GET /metrics/overview` | Totales de shifts/tokens/USD y conteo de liquidaciones por status |
+| `GET /metrics/revenue-by-model` | Ranking de modelos por USD generado |
+| `GET /metrics/revenue-by-monitor` | Ranking de monitores (vía shifts asignados) |
+
+### TRM / Tasa de cambio
+
+| Método / Ruta | Descripción |
+|-------------|-------------|
+| `GET /exchange-rates/today` | TRM vigente hoy (cache-aside contra datos.gov.co) |
+| `GET /exchange-rates/{date}` | TRM para una fecha específica |
+| `POST /exchange-rates` | Override manual (admin/owner) |
 
 ### `/api/v1`
 
@@ -311,7 +351,7 @@ poetry run pytest tests/api/   # solo tests de API
 poetry run pytest -k auth -v   # filtro por nombre
 ```
 
-Estado actual: **30 tests** cubriendo auth (registro, login, refresh, logout, MFA), rate limiting, security headers y audit log.
+Estado actual: **100 tests** cubriendo auth, MFA, rate limiting, security headers, audit log, todos los CRUDs tenant-scoped (users, rooms, split-configs, technical-sheets, shifts), liquidaciones (incluyendo cálculo USD→COP y transiciones de estado), sueldos de monitores con historial, métricas agregadas del dashboard, API keys, exchange rates con fetcher mock, y asilamiento multi-tenant (tenant A no accede a recursos de tenant B).
 
 Las pruebas usan SQLite en memoria (`aiosqlite`) y una implementación ligera de Redis (`FakeRedis`) — cero dependencias externas.
 

@@ -43,6 +43,7 @@ async def create_shift(
             tenant_id=tenant_id,
             model_id=body.model_id,
             room_id=body.room_id,
+            monitor_id=body.monitor_id,
             start_time=body.start_time,
             end_time=body.end_time,
         )
@@ -56,6 +57,7 @@ async def list_shifts(
     svc: ServiceDep,
     model_id: Annotated[uuid.UUID | None, Query()] = None,
     room_id: Annotated[uuid.UUID | None, Query()] = None,
+    monitor_id: Annotated[uuid.UUID | None, Query()] = None,
     status: Annotated[ShiftStatus | None, Query()] = None,
     date_from: Annotated[datetime | None, Query()] = None,
     date_to: Annotated[datetime | None, Query()] = None,
@@ -66,6 +68,7 @@ async def list_shifts(
         tenant_id=tenant_id,
         model_id=model_id,
         room_id=room_id,
+        monitor_id=monitor_id,
         status=status,
         date_from=date_from,
         date_to=date_to,
@@ -98,6 +101,7 @@ async def update_shift(
         return await svc.update(
             tenant_id=tenant_id,
             shift_id=shift_id,
+            monitor_id=body.monitor_id,
             status=body.status,
             start_time=body.start_time,
             end_time=body.end_time,

@@ -12,6 +12,7 @@ class ShiftCreate(BaseModel):
 
     model_id: uuid.UUID
     room_id: uuid.UUID
+    monitor_id: uuid.UUID | None = None
     start_time: datetime
     end_time: datetime | None = None
 
@@ -25,6 +26,7 @@ class ShiftCreate(BaseModel):
 class ShiftUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    monitor_id: uuid.UUID | None = None
     status: ShiftStatus | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
@@ -48,6 +50,7 @@ class ShiftResponse(BaseModel):
     id: uuid.UUID
     model_id: uuid.UUID
     room_id: uuid.UUID
+    monitor_id: uuid.UUID | None
     status: ShiftStatus
     start_time: datetime
     end_time: datetime | None

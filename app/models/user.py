@@ -37,7 +37,12 @@ class User(TenantMixin, TimestampMixin, Base):
     tenant: Mapped["Tenant"] = relationship(  # noqa: F821
         back_populates="users", foreign_keys=[tenant_id]
     )
-    shifts: Mapped[list["Shift"]] = relationship(back_populates="model")  # noqa: F821
+    shifts: Mapped[list["Shift"]] = relationship(  # noqa: F821
+        back_populates="model", foreign_keys="Shift.model_id"
+    )
+    monitored_shifts: Mapped[list["Shift"]] = relationship(  # noqa: F821
+        back_populates="monitor", foreign_keys="Shift.monitor_id"
+    )
     technical_sheets: Mapped[list["TechnicalSheet"]] = relationship(  # noqa: F821
         back_populates="model"
     )

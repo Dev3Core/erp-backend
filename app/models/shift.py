@@ -37,13 +37,23 @@ class Shift(TenantMixin, TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    monitor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[ShiftStatus] = mapped_column(default=ShiftStatus.SCHEDULED, nullable=False)
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     tokens_earned: Mapped[int] = mapped_column(default=0, nullable=False)
     usd_earned: Mapped[float] = mapped_column(Numeric(12, 2), default=0, nullable=False)
 
-    model: Mapped["User"] = relationship(back_populates="shifts")  # noqa: F821
+    model: Mapped["User"] = relationship(  # noqa: F821
+        foreign_keys=[model_id], back_populates="shifts"
+    )
+    monitor: Mapped["User | None"] = relationship(  # noqa: F821
+        foreign_keys=[monitor_id], back_populates="monitored_shifts"
+    )
     room: Mapped["Room"] = relationship(back_populates="shifts")  # noqa: F821
     liquidation: Mapped["Liquidation | None"] = relationship(  # noqa: F821
         back_populates="shift"
