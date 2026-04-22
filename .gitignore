@@ -16,9 +16,11 @@ env/
 # IDE
 .idea/
 .vscode/
-.claude/
 *.swp
 *.swo
+
+# Claude Code — share team config, keep local overrides private
+.claude/settings.local.json
 
 # Environment
 .env

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/bultoesal/.claude/**)",
+      "Edit(/.claude/skills/secure-coding/**)",
+      "Edit(/.claude/skills/clean-architecture/**)",
+      "Bash(poetry lock *)",
+      "Bash(poetry install *)",
+      "Bash(poetry run *)",
+      "Bash(echo \"---EXIT $?---\")",
+      "Bash(python -c \"import sys, json; d=json.load\\(sys.stdin\\); r=d.get\\('results', {}\\); [print\\(f, len\\(v\\)\\) for f,v in r.items\\(\\)]\")",
+      "Bash(python -c ' *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(python -c \"import secrets; print\\(secrets.token_urlsafe\\(64\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('.secrets.baseline'\\)\\);print\\(sum\\(len\\(v\\) for v in d['results'].values\\(\\)\\)\\)\")",
+      "Bash(echo \"baseline rows: $\\(python -c \"import json; d=json.load\\(open\\('.secrets.baseline'\\)\\);print\\(sum\\(len\\(v\\) for v in d['results'].values\\(\\)\\)\\)\"\\)\")",
+      "Bash(make security-scan *)",
+      "Bash(make test *)",
+      "Bash(make lint *)"
+    ],
+    "additionalDirectories": [
+      "/Users/bultoesal/Documents/Personales/erp/erp-backend/.claude/skills",
+      "/tmp"
+    ]
+  }
+}
