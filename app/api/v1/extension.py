@@ -8,9 +8,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.api_key_auth import CurrentApiKeyUser
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.database import get_db
 from app.models.room import Platform
-from app.schemas.macro import MacroListResponse, MacroResponse
+from app.schemas.macro import MacroResponse
 from app.services.macro import MacroService
 
 router = APIRouter(prefix="/ext", tags=["extension"])
@@ -27,17 +28,19 @@ async def ext_me(user: CurrentApiKeyUser):
     }
 
 
-@router.get("/macros", response_model=MacroListResponse)
+@router.get("/macros", response_model=OffsetPage[MacroResponse])
 async def ext_macros(
     user: CurrentApiKeyUser,
     db: Annotated[AsyncSession, Depends(get_db)],
+    params: Annotated[OffsetParams, Depends(offset_params)],
     platform: Annotated[Platform | None, Query()] = None,
 ):
     svc = MacroService(db)
     items, total = await svc.list_for_user(
         tenant_id=user.tenant_id,
         user_id=user.id,
+        params=params,
         platform=platform,
         active_only=True,
     )
-    return MacroListResponse(items=[MacroResponse.model_validate(x) for x in items], total=total)
+    return build_offset_page([MacroResponse.model_validate(x) for x in items], total, params)

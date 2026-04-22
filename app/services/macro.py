@@ -1,8 +1,9 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.macro import Macro
 from app.models.room import Platform
 from app.services.errors import NotFoundError
@@ -40,6 +41,7 @@ class MacroService:
         *,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
+        params: OffsetParams,
         platform: Platform | None = None,
         active_only: bool = True,
     ) -> tuple[list[Macro], int]:
@@ -47,21 +49,14 @@ class MacroService:
             Macro.tenant_id == tenant_id,
             Macro.user_id == user_id,
         )
-        count_stmt = (
-            select(func.count())
-            .select_from(Macro)
-            .where(Macro.tenant_id == tenant_id, Macro.user_id == user_id)
-        )
         if platform is not None:
             stmt = stmt.where(Macro.platform == platform)
-            count_stmt = count_stmt.where(Macro.platform == platform)
         if active_only:
             stmt = stmt.where(Macro.is_active.is_(True))
-            count_stmt = count_stmt.where(Macro.is_active.is_(True))
-        stmt = stmt.order_by(Macro.position.asc(), Macro.created_at.asc())
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(Macro.position.asc(), Macro.created_at.asc(), Macro.id.asc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def update(
         self,

@@ -4,7 +4,10 @@ extend-exclude = ["alembic/versions"]
 
 [lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH", "RUF"]
-ignore = ["A003"]
+# A003: dataclass fields may shadow builtins (common in Pydantic models).
+# TC001/TC002: rely on `from __future__ import annotations` being opt-in per file,
+# moving imports to TYPE_CHECKING blocks is stylistic noise for a small project.
+ignore = ["A003", "TC001", "TC002"]
 
 [lint.isort]
 known-first-party = ["app"]

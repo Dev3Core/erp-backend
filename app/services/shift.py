@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import CursorParams, paginate_cursor
 from app.models.room import Room
 from app.models.shift import Shift, ShiftStatus
 from app.models.user import Role, User
@@ -49,41 +50,35 @@ class ShiftService:
         self,
         *,
         tenant_id: uuid.UUID,
+        params: CursorParams,
         model_id: uuid.UUID | None = None,
         room_id: uuid.UUID | None = None,
         monitor_id: uuid.UUID | None = None,
         status: ShiftStatus | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[list[Shift], int]:
+    ) -> tuple[list[Shift], str | None, str | None]:
         stmt = select(Shift).where(Shift.tenant_id == tenant_id)
-        count_stmt = select(func.count()).select_from(Shift).where(Shift.tenant_id == tenant_id)
-
         if model_id is not None:
             stmt = stmt.where(Shift.model_id == model_id)
-            count_stmt = count_stmt.where(Shift.model_id == model_id)
         if room_id is not None:
             stmt = stmt.where(Shift.room_id == room_id)
-            count_stmt = count_stmt.where(Shift.room_id == room_id)
         if monitor_id is not None:
             stmt = stmt.where(Shift.monitor_id == monitor_id)
-            count_stmt = count_stmt.where(Shift.monitor_id == monitor_id)
         if status is not None:
             stmt = stmt.where(Shift.status == status)
-            count_stmt = count_stmt.where(Shift.status == status)
         if date_from is not None:
             stmt = stmt.where(Shift.start_time >= date_from)
-            count_stmt = count_stmt.where(Shift.start_time >= date_from)
         if date_to is not None:
             stmt = stmt.where(Shift.start_time <= date_to)
-            count_stmt = count_stmt.where(Shift.start_time <= date_to)
 
-        stmt = stmt.order_by(Shift.start_time.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        return await paginate_cursor(
+            self._db,
+            stmt=stmt,
+            params=params,
+            created_col=Shift.created_at,
+            id_col=Shift.id,
+        )
 
     async def get(self, *, tenant_id: uuid.UUID, shift_id: uuid.UUID) -> Shift:
         return await self._get_in_tenant(tenant_id=tenant_id, shift_id=shift_id)

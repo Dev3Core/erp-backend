@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.schemas.api_key import (
     ApiKeyCreate,
     ApiKeyCreated,
-    ApiKeyListResponse,
     ApiKeyResponse,
 )
 from app.services.api_key import ApiKeyService
@@ -55,23 +55,21 @@ async def issue_api_key(
     )
 
 
-@router.get("", response_model=ApiKeyListResponse)
+@router.get("", response_model=OffsetPage[ApiKeyResponse])
 async def list_my_keys(
     tenant_id: CurrentTenantId,
     user: CurrentUser,
     svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     include_revoked: Annotated[bool, Query()] = False,
-    limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     items, total = await svc.list_for_user(
         tenant_id=tenant_id,
         user_id=user.id,
+        params=params,
         include_revoked=include_revoked,
-        limit=limit,
-        offset=offset,
     )
-    return ApiKeyListResponse(items=[ApiKeyResponse.model_validate(x) for x in items], total=total)
+    return build_offset_page([ApiKeyResponse.model_validate(x) for x in items], total, params)
 
 
 @router.delete(

@@ -2,9 +2,10 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.monitor_salary import MonitorSalary
 from app.models.user import Role, User
 from app.services.errors import NotFoundError, ValidationError
@@ -43,24 +44,16 @@ class MonitorSalaryService:
         self,
         *,
         tenant_id: uuid.UUID,
+        params: OffsetParams,
         monitor_id: uuid.UUID | None = None,
-        limit: int = 50,
-        offset: int = 0,
     ) -> tuple[list[MonitorSalary], int]:
         stmt = select(MonitorSalary).where(MonitorSalary.tenant_id == tenant_id)
-        count_stmt = (
-            select(func.count())
-            .select_from(MonitorSalary)
-            .where(MonitorSalary.tenant_id == tenant_id)
-        )
         if monitor_id is not None:
             stmt = stmt.where(MonitorSalary.monitor_id == monitor_id)
-            count_stmt = count_stmt.where(MonitorSalary.monitor_id == monitor_id)
-
-        stmt = stmt.order_by(MonitorSalary.effective_from.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(MonitorSalary.effective_from.desc(), MonitorSalary.id.desc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def current_for(
         self, *, tenant_id: uuid.UUID, monitor_id: uuid.UUID, as_of: date

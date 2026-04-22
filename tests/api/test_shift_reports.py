@@ -52,11 +52,11 @@ class TestShiftReports:
     async def test_list(self, owner_client_a: AsyncClient):
         await _finished_shift(owner_client_a)
         resp = await owner_client_a.get("/api/v1/shift-reports")
-        assert resp.json()["total"] >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_idempotent_generation(self, owner_client_a: AsyncClient):
         sid = await _finished_shift(owner_client_a)
         # Second FINISHED transition is a no-op; no duplicate report.
         await owner_client_a.patch(f"/api/v1/shifts/{sid}", json={"status": "FINISHED"})
         listing = await owner_client_a.get("/api/v1/shift-reports")
-        assert listing.json()["total"] == 1
+        assert len(listing.json()["items"]) == 1

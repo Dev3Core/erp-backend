@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.room import Platform
-from app.schemas.macro import MacroCreate, MacroListResponse, MacroResponse, MacroUpdate
+from app.schemas.macro import MacroCreate, MacroResponse, MacroUpdate
 from app.services.errors import ServiceError
 from app.services.macro import MacroService
 
@@ -39,21 +40,23 @@ async def create_macro(
     )
 
 
-@router.get("", response_model=MacroListResponse)
+@router.get("", response_model=OffsetPage[MacroResponse])
 async def list_my_macros(
     tenant_id: CurrentTenantId,
     user: CurrentUser,
     svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     platform: Annotated[Platform | None, Query()] = None,
     active_only: Annotated[bool, Query()] = True,
 ):
     items, total = await svc.list_for_user(
         tenant_id=tenant_id,
         user_id=user.id,
+        params=params,
         platform=platform,
         active_only=active_only,
     )
-    return MacroListResponse(items=[MacroResponse.model_validate(x) for x in items], total=total)
+    return build_offset_page([MacroResponse.model_validate(x) for x in items], total, params)
 
 
 @router.patch("/{macro_id}", response_model=MacroResponse)

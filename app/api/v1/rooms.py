@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_roles
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.room import Platform, RoomStatus
 from app.models.user import Role
-from app.schemas.room import RoomCreate, RoomListResponse, RoomResponse, RoomUpdate
+from app.schemas.room import RoomCreate, RoomResponse, RoomUpdate
 from app.services.errors import ServiceError
 from app.services.room import RoomService
 
@@ -44,25 +45,23 @@ async def create_room(body: RoomCreate, tenant_id: CurrentTenantId, svc: RoomSer
         raise HTTPException(e.status_code, e.detail) from None
 
 
-@router.get("", response_model=RoomListResponse, dependencies=[AnyAuthed])
+@router.get("", response_model=OffsetPage[RoomResponse], dependencies=[AnyAuthed])
 async def list_rooms(
     tenant_id: CurrentTenantId,
     svc: RoomServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     platform: Annotated[Platform | None, Query()] = None,
     status: Annotated[RoomStatus | None, Query()] = None,
     is_active: Annotated[bool | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
     items, total = await svc.list(
         tenant_id=tenant_id,
+        params=params,
         platform=platform,
         status=status,
         is_active=is_active,
-        limit=limit,
-        offset=offset,
     )
-    return RoomListResponse(items=[RoomResponse.model_validate(r) for r in items], total=total)
+    return build_offset_page([RoomResponse.model_validate(r) for r in items], total, params)
 
 
 @router.get("/{room_id}", response_model=RoomResponse, dependencies=[AnyAuthed])

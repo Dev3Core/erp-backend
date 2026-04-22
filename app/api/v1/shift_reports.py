@@ -1,14 +1,15 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_roles
+from app.core.pagination import CursorPage, CursorParams, build_cursor_page, cursor_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.user import Role
-from app.schemas.shift_report import ShiftReportListResponse, ShiftReportResponse
+from app.schemas.shift_report import ShiftReportResponse
 from app.services.errors import ServiceError
 from app.services.shift_report import ShiftReportService
 
@@ -24,16 +25,18 @@ def _get_service(db: Annotated[AsyncSession, Depends(get_db)]) -> ShiftReportSer
 ServiceDep = Annotated[ShiftReportService, Depends(_get_service)]
 
 
-@router.get("", response_model=ShiftReportListResponse, dependencies=[AnyAuthed])
+@router.get("", response_model=CursorPage[ShiftReportResponse], dependencies=[AnyAuthed])
 async def list_reports(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    params: Annotated[CursorParams, Depends(cursor_params)],
 ):
-    items, total = await svc.list_for_tenant(tenant_id=tenant_id, limit=limit, offset=offset)
-    return ShiftReportListResponse(
-        items=[ShiftReportResponse.model_validate(x) for x in items], total=total
+    items, next_cursor, prev_cursor = await svc.list_for_tenant(tenant_id=tenant_id, params=params)
+    return build_cursor_page(
+        [ShiftReportResponse.model_validate(x) for x in items],
+        next_cursor,
+        prev_cursor,
+        params.limit,
     )
 
 

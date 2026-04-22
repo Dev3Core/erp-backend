@@ -5,13 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_roles
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.salary_advance_request import SalaryAdvanceStatus
 from app.models.user import Role
 from app.schemas.salary_advance_request import (
     SalaryAdvanceRequestCreate,
-    SalaryAdvanceRequestListResponse,
     SalaryAdvanceRequestResponse,
     SalaryAdvanceRequestReview,
 )
@@ -49,35 +49,33 @@ async def request_advance(
     )
 
 
-@router.get("/mine", response_model=SalaryAdvanceRequestListResponse)
+@router.get("/mine", response_model=OffsetPage[SalaryAdvanceRequestResponse])
 async def list_mine(
     tenant_id: CurrentTenantId,
     user: CurrentUser,
     svc: ServiceDep,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    params: Annotated[OffsetParams, Depends(offset_params)],
 ):
-    items, total = await svc.list_mine(
-        tenant_id=tenant_id, user_id=user.id, limit=limit, offset=offset
-    )
-    return SalaryAdvanceRequestListResponse(
-        items=[SalaryAdvanceRequestResponse.model_validate(x) for x in items], total=total
+    items, total = await svc.list_mine(tenant_id=tenant_id, user_id=user.id, params=params)
+    return build_offset_page(
+        [SalaryAdvanceRequestResponse.model_validate(x) for x in items], total, params
     )
 
 
-@router.get("", response_model=SalaryAdvanceRequestListResponse, dependencies=[AdminOrOwner])
+@router.get(
+    "",
+    response_model=OffsetPage[SalaryAdvanceRequestResponse],
+    dependencies=[AdminOrOwner],
+)
 async def list_all(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     status: Annotated[SalaryAdvanceStatus | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    items, total = await svc.list_for_admin(
-        tenant_id=tenant_id, status=status, limit=limit, offset=offset
-    )
-    return SalaryAdvanceRequestListResponse(
-        items=[SalaryAdvanceRequestResponse.model_validate(x) for x in items], total=total
+    items, total = await svc.list_for_admin(tenant_id=tenant_id, params=params, status=status)
+    return build_offset_page(
+        [SalaryAdvanceRequestResponse.model_validate(x) for x in items], total, params
     )
 
 

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_roles
 from app.core.html_sanitizer import sanitize_bio_html
+from app.core.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.user import Role
@@ -13,7 +14,6 @@ from app.schemas.bio_template import (
     BioSanitizeRequest,
     BioSanitizeResponse,
     BioTemplateCreate,
-    BioTemplateListResponse,
     BioTemplateResponse,
     BioTemplateUpdate,
 )
@@ -53,16 +53,15 @@ async def create_template(
     )
 
 
-@router.get("", response_model=BioTemplateListResponse, dependencies=[AnyAuthed])
+@router.get("", response_model=OffsetPage[BioTemplateResponse], dependencies=[AnyAuthed])
 async def list_templates(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
     active_only: Annotated[bool, Query()] = False,
 ):
-    items, total = await svc.list(tenant_id=tenant_id, active_only=active_only)
-    return BioTemplateListResponse(
-        items=[BioTemplateResponse.model_validate(x) for x in items], total=total
-    )
+    items, total = await svc.list(tenant_id=tenant_id, params=params, active_only=active_only)
+    return build_offset_page([BioTemplateResponse.model_validate(x) for x in items], total, params)
 
 
 @router.get("/{template_id}", response_model=BioTemplateResponse, dependencies=[AnyAuthed])

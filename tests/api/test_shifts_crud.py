@@ -116,4 +116,4 @@ class TestShiftsCrud:
         sid = r.json()["id"]
         assert (await owner_client_a.get(f"/api/v1/shifts/{sid}")).status_code == 404
         listing = await owner_client_a.get("/api/v1/shifts")
-        assert listing.json()["total"] == 0
+        assert listing.json()["items"] == []

@@ -1,8 +1,9 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.room import Platform, Room, RoomStatus
 from app.services.errors import ConflictError, NotFoundError
 
@@ -44,29 +45,22 @@ class RoomService:
         self,
         *,
         tenant_id: uuid.UUID,
+        params: OffsetParams,
         platform: Platform | None = None,
         status: RoomStatus | None = None,
         is_active: bool | None = None,
-        limit: int = 50,
-        offset: int = 0,
     ) -> tuple[list[Room], int]:
         stmt = select(Room).where(Room.tenant_id == tenant_id)
-        count_stmt = select(func.count()).select_from(Room).where(Room.tenant_id == tenant_id)
         if platform is not None:
             stmt = stmt.where(Room.platform == platform)
-            count_stmt = count_stmt.where(Room.platform == platform)
         if status is not None:
             stmt = stmt.where(Room.status == status)
-            count_stmt = count_stmt.where(Room.status == status)
         if is_active is not None:
             stmt = stmt.where(Room.is_active.is_(is_active))
-            count_stmt = count_stmt.where(Room.is_active.is_(is_active))
-
-        stmt = stmt.order_by(Room.created_at.desc()).limit(limit).offset(offset)
-        result = await self._db.execute(stmt)
-        items = list(result.scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(Room.created_at.desc(), Room.id.desc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def get(self, *, tenant_id: uuid.UUID, room_id: uuid.UUID) -> Room:
         return await self._get_in_tenant(tenant_id=tenant_id, room_id=room_id)

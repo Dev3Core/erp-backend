@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import CursorParams, paginate_cursor
 from app.models.notification import Notification, NotificationKind
 
 
@@ -42,20 +43,25 @@ class NotificationService:
         *,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
+        params: CursorParams,
         unread_only: bool = False,
-        limit: int = 50,
-        offset: int = 0,
-    ) -> tuple[list[Notification], int, int]:
+    ) -> tuple[list[Notification], str | None, str | None]:
         stmt = select(Notification).where(
             Notification.tenant_id == tenant_id,
             Notification.user_id == user_id,
         )
-        count_stmt = (
-            select(func.count())
-            .select_from(Notification)
-            .where(Notification.tenant_id == tenant_id, Notification.user_id == user_id)
+        if unread_only:
+            stmt = stmt.where(Notification.read_at.is_(None))
+        return await paginate_cursor(
+            self._db,
+            stmt=stmt,
+            params=params,
+            created_col=Notification.created_at,
+            id_col=Notification.id,
         )
-        unread_stmt = (
+
+    async def unread_count(self, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> int:
+        stmt = (
             select(func.count())
             .select_from(Notification)
             .where(
@@ -64,15 +70,7 @@ class NotificationService:
                 Notification.read_at.is_(None),
             )
         )
-        if unread_only:
-            stmt = stmt.where(Notification.read_at.is_(None))
-            count_stmt = count_stmt.where(Notification.read_at.is_(None))
-
-        stmt = stmt.order_by(Notification.created_at.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        unread = (await self._db.execute(unread_stmt)).scalar_one()
-        return items, total, unread
+        return (await self._db.execute(stmt)).scalar_one()
 
     async def mark_read(
         self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, ids: list[uuid.UUID]

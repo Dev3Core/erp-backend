@@ -6,7 +6,6 @@ from fastapi import (
     Cookie,
     Depends,
     HTTPException,
-    Query,
     WebSocket,
     WebSocketDisconnect,
     status,
@@ -16,12 +15,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import CurrentUser, require_roles
+from app.core.pagination import CursorPage, CursorParams, build_cursor_page, cursor_params
 from app.core.security import TokenType, decode_token
 from app.core.tenant import CurrentTenantId
 from app.core.ws_hub import hub
 from app.database import async_session, get_db
 from app.models.user import Role, User
-from app.schemas.chat import ChatMessageListResponse, ChatMessageResponse, ChatSend
+from app.schemas.chat import ChatMessageResponse, ChatSend
 from app.services.chat import ChatService
 from app.services.errors import ServiceError
 
@@ -39,7 +39,7 @@ ServiceDep = Annotated[ChatService, Depends(_get_service)]
 
 @router.get(
     "/shift/{shift_id}/messages",
-    response_model=ChatMessageListResponse,
+    response_model=CursorPage[ChatMessageResponse],
     dependencies=[AnyAuthed],
 )
 async def list_messages(
@@ -47,21 +47,22 @@ async def list_messages(
     tenant_id: CurrentTenantId,
     user: CurrentUser,
     svc: ServiceDep,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    params: Annotated[CursorParams, Depends(cursor_params)],
 ):
     try:
-        items, total = await svc.list_for_shift(
+        items, next_cursor, prev_cursor = await svc.list_for_shift(
             tenant_id=tenant_id,
             shift_id=shift_id,
             actor=user,
-            limit=limit,
-            offset=offset,
+            params=params,
         )
     except ServiceError as e:
         raise HTTPException(e.status_code, e.detail) from None
-    return ChatMessageListResponse(
-        items=[ChatMessageResponse.model_validate(x) for x in items], total=total
+    return build_cursor_page(
+        [ChatMessageResponse.model_validate(x) for x in items],
+        next_cursor,
+        prev_cursor,
+        params.limit,
     )
 
 

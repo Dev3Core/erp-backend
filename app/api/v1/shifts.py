@@ -6,11 +6,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import require_roles
+from app.core.pagination import CursorPage, CursorParams, build_cursor_page, cursor_params
 from app.core.tenant import CurrentTenantId
 from app.database import get_db
 from app.models.shift import ShiftStatus
 from app.models.user import Role
-from app.schemas.shift import ShiftCreate, ShiftListResponse, ShiftResponse, ShiftUpdate
+from app.schemas.shift import ShiftCreate, ShiftResponse, ShiftUpdate
 from app.services.errors import ServiceError
 from app.services.shift import ShiftService
 
@@ -51,31 +52,34 @@ async def create_shift(
         raise HTTPException(e.status_code, e.detail) from None
 
 
-@router.get("", response_model=ShiftListResponse, dependencies=[AnyAuthed])
+@router.get("", response_model=CursorPage[ShiftResponse], dependencies=[AnyAuthed])
 async def list_shifts(
     tenant_id: CurrentTenantId,
     svc: ServiceDep,
+    params: Annotated[CursorParams, Depends(cursor_params)],
     model_id: Annotated[uuid.UUID | None, Query()] = None,
     room_id: Annotated[uuid.UUID | None, Query()] = None,
     monitor_id: Annotated[uuid.UUID | None, Query()] = None,
     status: Annotated[ShiftStatus | None, Query()] = None,
     date_from: Annotated[datetime | None, Query()] = None,
     date_to: Annotated[datetime | None, Query()] = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
 ):
-    items, total = await svc.list(
+    items, next_cursor, prev_cursor = await svc.list(
         tenant_id=tenant_id,
+        params=params,
         model_id=model_id,
         room_id=room_id,
         monitor_id=monitor_id,
         status=status,
         date_from=date_from,
         date_to=date_to,
-        limit=limit,
-        offset=offset,
     )
-    return ShiftListResponse(items=[ShiftResponse.model_validate(s) for s in items], total=total)
+    return build_cursor_page(
+        [ShiftResponse.model_validate(s) for s in items],
+        next_cursor,
+        prev_cursor,
+        params.limit,
+    )
 
 
 @router.get("/{shift_id}", response_model=ShiftResponse, dependencies=[AnyAuthed])

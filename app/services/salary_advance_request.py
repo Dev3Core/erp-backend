@@ -2,9 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.pagination import OffsetParams, count_from, paginate_offset
 from app.models.salary_advance_request import SalaryAdvanceRequest, SalaryAdvanceStatus
 from app.models.user import Role, User
 from app.services.errors import ForbiddenError, NotFoundError, ValidationError
@@ -48,47 +49,36 @@ class SalaryAdvanceService:
         *,
         tenant_id: uuid.UUID,
         user_id: uuid.UUID,
-        limit: int = 50,
-        offset: int = 0,
+        params: OffsetParams,
     ) -> tuple[list[SalaryAdvanceRequest], int]:
-        stmt = select(SalaryAdvanceRequest).where(
-            SalaryAdvanceRequest.tenant_id == tenant_id,
-            SalaryAdvanceRequest.requester_id == user_id,
-        )
-        count_stmt = (
-            select(func.count())
-            .select_from(SalaryAdvanceRequest)
+        stmt = (
+            select(SalaryAdvanceRequest)
             .where(
                 SalaryAdvanceRequest.tenant_id == tenant_id,
                 SalaryAdvanceRequest.requester_id == user_id,
             )
+            .order_by(SalaryAdvanceRequest.created_at.desc(), SalaryAdvanceRequest.id.desc())
         )
-        stmt = stmt.order_by(SalaryAdvanceRequest.created_at.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def list_for_admin(
         self,
         *,
         tenant_id: uuid.UUID,
+        params: OffsetParams,
         status: SalaryAdvanceStatus | None = None,
-        limit: int = 50,
-        offset: int = 0,
     ) -> tuple[list[SalaryAdvanceRequest], int]:
         stmt = select(SalaryAdvanceRequest).where(SalaryAdvanceRequest.tenant_id == tenant_id)
-        count_stmt = (
-            select(func.count())
-            .select_from(SalaryAdvanceRequest)
-            .where(SalaryAdvanceRequest.tenant_id == tenant_id)
-        )
         if status is not None:
             stmt = stmt.where(SalaryAdvanceRequest.status == status)
-            count_stmt = count_stmt.where(SalaryAdvanceRequest.status == status)
-        stmt = stmt.order_by(SalaryAdvanceRequest.created_at.desc()).limit(limit).offset(offset)
-        items = list((await self._db.execute(stmt)).scalars().all())
-        total = (await self._db.execute(count_stmt)).scalar_one()
-        return items, total
+        stmt = stmt.order_by(
+            SalaryAdvanceRequest.created_at.desc(), SalaryAdvanceRequest.id.desc()
+        )
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
 
     async def review(
         self,

@@ -37,15 +37,12 @@ async def _fetch(
     date_from: date | None,
     date_to: date | None,
 ):
-    items, _ = await svc.list(
+    return await svc.list_all_for_export(
         tenant_id=tenant_id,
         status=status,
         date_from=date_from,
         date_to=date_to,
-        limit=1000,
-        offset=0,
     )
-    return items
 
 
 @router.get("/liquidations.csv", dependencies=[AdminOrOwner])
