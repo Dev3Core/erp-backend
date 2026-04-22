@@ -2,10 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.config import settings
 from app.core.dependencies import CurrentUser
-from app.database import get_db
+from app.core.rate_limit import RateLimitByIP, RateLimitByUser
+from app.database import async_session, get_db
 from app.redis import get_redis
 from app.schemas.auth import (
     LoginRequest,
@@ -22,11 +24,18 @@ from app.services.auth import AuthError, AuthService
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
+def _get_audit_session_factory() -> async_sessionmaker[AsyncSession]:
+    return async_session
+
+
 def _get_auth_service(
     db: Annotated[AsyncSession, Depends(get_db)],
     redis: Annotated[Redis, Depends(get_redis)],
+    audit_factory: Annotated[
+        async_sessionmaker[AsyncSession], Depends(_get_audit_session_factory)
+    ],
 ) -> AuthService:
-    return AuthService(db, redis)
+    return AuthService(db, redis, audit_session_factory=audit_factory)
 
 
 AuthServiceDep = Annotated[AuthService, Depends(_get_auth_service)]
@@ -34,9 +43,13 @@ AuthServiceDep = Annotated[AuthService, Depends(_get_auth_service)]
 _COOKIE_OPTS: dict = {
     "httponly": True,
     "samesite": "lax",
-    "secure": False,  # True in production behind HTTPS
+    "secure": settings.SESSION_COOKIE_SECURE,
     "path": "/",
 }
+
+_login_rl = RateLimitByIP(scope="auth_login", limit=5, window_seconds=60)
+_register_rl = RateLimitByIP(scope="auth_register", limit=3, window_seconds=60)
+_mfa_verify_rl = RateLimitByUser(scope="auth_mfa_verify", limit=5, window_seconds=60)
 
 
 def _set_tokens(response: Response, access: str, refresh: str) -> None:
@@ -49,7 +62,12 @@ def _clear_tokens(response: Response) -> None:
     response.delete_cookie("refresh_token", path="/")
 
 
-@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/register",
+    response_model=RegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(_register_rl)],
+)
 async def register(body: RegisterRequest, svc: AuthServiceDep):
     try:
         tenant, owner = await svc.register(
@@ -69,7 +87,7 @@ async def register(body: RegisterRequest, svc: AuthServiceDep):
     )
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post("/login", response_model=LoginResponse, dependencies=[Depends(_login_rl)])
 async def login(body: LoginRequest, response: Response, svc: AuthServiceDep):
     try:
         user = await svc.authenticate(body.email, body.password)
@@ -130,7 +148,11 @@ async def mfa_setup(user: CurrentUser, svc: AuthServiceDep):
     return MFASetupResponse(qr_uri=uri, secret=secret)
 
 
-@router.post("/mfa/verify", response_model=MFAVerifyResponse)
+@router.post(
+    "/mfa/verify",
+    response_model=MFAVerifyResponse,
+    dependencies=[Depends(_mfa_verify_rl)],
+)
 async def mfa_verify(
     body: MFAVerifyRequest,
     response: Response,

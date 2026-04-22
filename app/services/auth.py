@@ -1,3 +1,4 @@
+import logging
 import re
 import uuid
 from datetime import UTC, datetime
@@ -5,7 +6,7 @@ from datetime import UTC, datetime
 import pyotp
 from redis.asyncio import Redis
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.config import settings
 from app.core.security import (
@@ -17,8 +18,11 @@ from app.core.security import (
     token_blacklist_key,
     verify_password,
 )
+from app.models.audit_log import AuditLog
 from app.models.tenant import Tenant
 from app.models.user import Role, User
+
+logger = logging.getLogger(__name__)
 
 
 class AuthError(Exception):
@@ -34,9 +38,15 @@ def _slugify(name: str) -> str:
 
 
 class AuthService:
-    def __init__(self, db: AsyncSession, redis: Redis):
+    def __init__(
+        self,
+        db: AsyncSession,
+        redis: Redis,
+        audit_session_factory: async_sessionmaker[AsyncSession] | None = None,
+    ):
         self._db = db
         self._redis = redis
+        self._audit_session_factory = audit_session_factory
 
     async def register(
         self, studio_name: str, full_name: str, email: str, password: str
@@ -70,6 +80,7 @@ class AuthService:
         )
         tenant.owner_id = owner.id
 
+        await self._audit(user=owner, action="auth.register")
         return tenant, owner
 
     async def authenticate(self, email: str, password: str) -> User:
@@ -77,13 +88,20 @@ class AuthService:
         result = await self._db.execute(stmt)
         user = result.scalar_one_or_none()
 
-        if user is None or not verify_password(password, user.hashed_password):
+        if user is None:
+            logger.info("login failed: unknown email")
+            raise AuthError("Invalid credentials")
+
+        if not verify_password(password, user.hashed_password):
+            await self._audit(user=user, action="auth.login.failure")
             raise AuthError("Invalid credentials")
 
         tenant = await self._db.get(Tenant, user.tenant_id)
         if tenant is None or not tenant.is_active:
+            await self._audit(user=user, action="auth.login.blocked")
             raise AuthError("Account suspended. Contact support.")
 
+        await self._audit(user=user, action="auth.login.success")
         return user
 
     def create_token_pair(self, user: User, *, mfa_verified: bool = False) -> tuple[str, str]:
@@ -123,6 +141,7 @@ class AuthService:
         return access, refresh, payload
 
     async def logout(self, access_token: str, refresh_token: str | None) -> None:
+        audited = False
         for token in (access_token, refresh_token):
             if token is None:
                 continue
@@ -133,7 +152,13 @@ class AuthService:
                 ttl = max(exp - int(datetime.now(UTC).timestamp()), 0)
                 if jti and ttl > 0:
                     await self._blacklist_token(jti, ttl)
+                if not audited:
+                    user = await self._db.get(User, uuid.UUID(str(payload["sub"])))
+                    if user is not None:
+                        await self._audit(user=user, action="auth.logout")
+                        audited = True
             except Exception:
+                logger.warning("logout token blacklist failed", exc_info=True)
                 continue
 
     async def setup_mfa(self, user: User) -> tuple[str, str]:
@@ -146,6 +171,7 @@ class AuthService:
 
         totp = pyotp.TOTP(secret)
         uri = totp.provisioning_uri(name=user.email, issuer_name=settings.APP_NAME)
+        await self._audit(user=user, action="auth.mfa.setup")
         return uri, secret
 
     async def verify_mfa(self, user: User, code: str) -> None:
@@ -154,14 +180,45 @@ class AuthService:
 
         totp = pyotp.TOTP(user.mfa_secret)
         if not totp.verify(code, valid_window=1):
+            await self._audit(user=user, action="auth.mfa.verify.failure")
             raise AuthError("Invalid MFA code")
 
         if not user.mfa_enabled:
             user.mfa_enabled = True
             await self._db.flush()
 
+        await self._audit(user=user, action="auth.mfa.verify.success")
+
     async def is_token_blacklisted(self, jti: str) -> bool:
         return await self._is_blacklisted(jti)
+
+    async def _audit(
+        self,
+        *,
+        user: User,
+        action: str,
+        details: str | None = None,
+    ) -> None:
+        """Best-effort audit write in an independent session to survive outer rollback."""
+        try:
+            entry_kwargs = {
+                "id": uuid.uuid4(),
+                "tenant_id": user.tenant_id,
+                "user_id": user.id,
+                "action": action,
+                "entity_type": "user",
+                "entity_id": user.id,
+                "details": details,
+            }
+            if self._audit_session_factory is not None:
+                async with self._audit_session_factory() as session:
+                    session.add(AuditLog(**entry_kwargs))
+                    await session.commit()
+            else:
+                self._db.add(AuditLog(**entry_kwargs))
+                await self._db.flush()
+        except Exception:
+            logger.warning("audit log write failed action=%s", action, exc_info=True)
 
     async def _ensure_unique_slug(self, base_slug: str) -> str:
         slug = base_slug

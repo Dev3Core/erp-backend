@@ -1,4 +1,4 @@
-.PHONY: dev dev-down prod prod-down migrate lint test shell
+.PHONY: dev dev-down prod prod-down migrate lint test shell security-scan sast sca secrets-scan secrets-audit semgrep-scan
 
 COMPOSE_DEV  = docker compose -f .docker/compose.yml
 COMPOSE_PROD = docker compose -f .docker/compose.prod.yml
@@ -41,6 +41,25 @@ lint-fix:
 
 test:
 	poetry run pytest -v
+
+# --- Security ---
+sast:
+	poetry run bandit -r app/ -c pyproject.toml
+	poetry run ruff check --select S app/
+
+sca:
+	poetry run pip-audit --skip-editable
+
+secrets-scan:
+	poetry run detect-secrets scan --baseline .secrets.baseline --exclude-files '\.venv|poetry\.lock|\.lock$$'
+
+secrets-audit:
+	poetry run detect-secrets audit .secrets.baseline
+
+semgrep-scan:
+	poetry run semgrep --config=p/owasp-top-ten --config=p/python --config=p/security-audit --error app/
+
+security-scan: sast sca secrets-scan semgrep-scan
 
 # --- Utilities ---
 shell:

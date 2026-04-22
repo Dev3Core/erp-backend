@@ -28,7 +28,11 @@ def verify_password(plain: str, hashed: str) -> bool:
 def _create_token(data: dict[str, object], expires_delta: timedelta, token_type: TokenType) -> str:
     to_encode = {**data, "type": token_type.value}
     to_encode["exp"] = datetime.now(UTC) + expires_delta
-    return jwt.encode(to_encode, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+    return jwt.encode(
+        to_encode,
+        settings.JWT_SECRET.get_secret_value(),
+        algorithm=settings.JWT_ALGORITHM,
+    )
 
 
 def create_access_token(data: dict[str, object]) -> str:
@@ -43,7 +47,11 @@ def create_refresh_token(data: dict[str, object]) -> str:
 
 def decode_token(token: str) -> dict[str, object]:
     try:
-        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+        return jwt.decode(
+            token,
+            settings.JWT_SECRET.get_secret_value(),
+            algorithms=[settings.JWT_ALGORITHM],
+        )
     except JWTError:
         raise
 
