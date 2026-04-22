@@ -6,6 +6,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.liquidation import Liquidation, LiquidationStatus
+from app.models.room import Room
 from app.models.shift import Shift, ShiftStatus
 from app.models.user import User
 
@@ -158,3 +159,151 @@ class MetricsService:
             }
             for r in rows
         ]
+
+    async def revenue_by_platform(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> list[dict]:
+        filters = [
+            Shift.tenant_id == tenant_id,
+            Shift.status == ShiftStatus.FINISHED,
+        ]
+        if date_from is not None:
+            filters.append(Shift.start_time >= date_from)
+        if date_to is not None:
+            filters.append(Shift.start_time <= date_to)
+
+        stmt = (
+            select(
+                Room.platform.label("platform"),
+                func.count(Shift.id).label("total_shifts"),
+                func.coalesce(func.sum(Shift.tokens_earned), 0).label("total_tokens"),
+                func.coalesce(func.sum(Shift.usd_earned), Decimal("0")).label("total_usd"),
+            )
+            .join(Room, Shift.room_id == Room.id)
+            .where(and_(*filters))
+            .group_by(Room.platform)
+            .order_by(func.sum(Shift.usd_earned).desc())
+        )
+        rows = (await self._db.execute(stmt)).all()
+        return [
+            {
+                "platform": r.platform.value if hasattr(r.platform, "value") else str(r.platform),
+                "total_shifts": int(r.total_shifts),
+                "total_tokens": int(r.total_tokens),
+                "total_usd": r.total_usd,
+            }
+            for r in rows
+        ]
+
+    async def daily_revenue(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        date_from: date,
+        date_to: date,
+        model_id: uuid.UUID | None = None,
+    ) -> list[dict]:
+        filters = [
+            Shift.tenant_id == tenant_id,
+            Shift.status == ShiftStatus.FINISHED,
+            Shift.start_time >= date_from,
+            Shift.start_time <= date_to,
+        ]
+        if model_id is not None:
+            filters.append(Shift.model_id == model_id)
+
+        day_col = func.date(Shift.start_time).label("day")
+        stmt = (
+            select(
+                day_col,
+                func.count(Shift.id).label("total_shifts"),
+                func.coalesce(func.sum(Shift.tokens_earned), 0).label("total_tokens"),
+                func.coalesce(func.sum(Shift.usd_earned), Decimal("0")).label("total_usd"),
+            )
+            .where(and_(*filters))
+            .group_by(day_col)
+            .order_by(day_col.asc())
+        )
+        rows = (await self._db.execute(stmt)).all()
+        return [
+            {
+                "day": r.day,
+                "total_shifts": int(r.total_shifts),
+                "total_tokens": int(r.total_tokens),
+                "total_usd": r.total_usd,
+            }
+            for r in rows
+        ]
+
+    async def model_overview(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        model_id: uuid.UUID,
+        date_from: date | None,
+        date_to: date | None,
+    ) -> dict:
+        filters = [
+            Shift.tenant_id == tenant_id,
+            Shift.model_id == model_id,
+            Shift.status == ShiftStatus.FINISHED,
+        ]
+        if date_from is not None:
+            filters.append(Shift.start_time >= date_from)
+        if date_to is not None:
+            filters.append(Shift.start_time <= date_to)
+
+        stmt = select(
+            func.count(Shift.id),
+            func.coalesce(func.sum(Shift.tokens_earned), 0),
+            func.coalesce(func.sum(Shift.usd_earned), Decimal("0")),
+        ).where(and_(*filters))
+        total_shifts, total_tokens, total_usd = (await self._db.execute(stmt)).one()
+
+        return {
+            "model_id": model_id,
+            "period_from": date_from,
+            "period_to": date_to,
+            "total_shifts": int(total_shifts),
+            "total_tokens": int(total_tokens),
+            "total_usd": total_usd,
+        }
+
+    async def best_monitor_for_model(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        model_id: uuid.UUID,
+    ) -> dict | None:
+        filters = [
+            Shift.tenant_id == tenant_id,
+            Shift.model_id == model_id,
+            Shift.status == ShiftStatus.FINISHED,
+            Shift.monitor_id.isnot(None),
+        ]
+        stmt = (
+            select(
+                User.id,
+                User.full_name,
+                func.count(Shift.id).label("total_shifts"),
+                func.coalesce(func.sum(Shift.usd_earned), Decimal("0")).label("total_usd"),
+            )
+            .join(Shift, Shift.monitor_id == User.id)
+            .where(and_(*filters))
+            .group_by(User.id, User.full_name)
+            .order_by(func.sum(Shift.usd_earned).desc())
+            .limit(1)
+        )
+        row = (await self._db.execute(stmt)).first()
+        if row is None:
+            return None
+        return {
+            "monitor_id": row.id,
+            "full_name": row.full_name,
+            "total_shifts": int(row.total_shifts),
+            "total_usd": row.total_usd,
+        }

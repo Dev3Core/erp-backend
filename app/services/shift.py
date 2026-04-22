@@ -9,11 +9,13 @@ from app.models.room import Room
 from app.models.shift import Shift, ShiftStatus
 from app.models.user import Role, User
 from app.services.errors import NotFoundError, ValidationError
+from app.services.shift_report import ShiftReportService
 
 
 class ShiftService:
     def __init__(self, db: AsyncSession):
         self._db = db
+        self._reports = ShiftReportService(db)
 
     async def create(
         self,
@@ -103,6 +105,11 @@ class ShiftService:
         if monitor_id is not None:
             await self._ensure_monitor_in_tenant(tenant_id=tenant_id, monitor_id=monitor_id)
             shift.monitor_id = monitor_id
+        will_finish = (
+            status is not None
+            and status == ShiftStatus.FINISHED
+            and shift.status != ShiftStatus.FINISHED
+        )
         if status is not None:
             shift.status = status
         if start_time is not None:
@@ -115,6 +122,8 @@ class ShiftService:
             shift.usd_earned = usd_earned
 
         await self._db.flush()
+        if will_finish:
+            await self._reports.generate_if_missing(tenant_id=tenant_id, shift=shift)
         return shift
 
     async def delete(self, *, tenant_id: uuid.UUID, shift_id: uuid.UUID) -> None:
