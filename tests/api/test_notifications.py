@@ -1,7 +1,7 @@
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.models.notification import Notification, NotificationKind
+from app.modules.notifications.models import Notification, NotificationKind
 from tests.conftest import TestingSession
 
 

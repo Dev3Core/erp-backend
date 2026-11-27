@@ -104,9 +104,9 @@ class TestAdvancedMetrics:
 
         from httpx import ASGITransport
 
-        from app.core.security import hash_password
         from app.main import app
-        from app.models.user import Role, User
+        from app.modules.identity import Role, User
+        from app.shared.security import hash_password
         from tests.conftest import TestingSession
 
         async with TestingSession() as s:

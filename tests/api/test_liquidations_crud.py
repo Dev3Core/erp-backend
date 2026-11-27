@@ -4,10 +4,10 @@ from decimal import Decimal
 import pytest
 from httpx import AsyncClient
 
-from app.api.v1.exchange_rates import _get_service as _get_fx_service
-from app.database import get_db
 from app.main import app
-from app.services.exchange_rate import ExchangeRateService
+from app.modules.payroll import ExchangeRateService
+from app.modules.payroll import get_exchange_rate_service as _get_fx_service
+from app.shared.database import get_db
 
 
 async def _fake_trm(target_date: date) -> Decimal:

@@ -72,7 +72,7 @@ Hereda todo lo anterior. Variables adicionales que **solo se usan en el compose 
 → Migraciones no corrieron. El servicio `migrate` en `compose.yml` debería correr antes del `api`. Si no, ejecutar manual: `make migrate` (host) o `docker compose -f .docker/compose.yml exec api poetry run alembic upgrade head`.
 
 **Cookies no llegan al backend desde el frontend en prod**
-→ Verificar `SESSION_COOKIE_SECURE=true`, HTTPS terminado upstream, y que el dominio del front esté en `CORS_ORIGINS`. Para cross-site (app.ex.com → api.ex.com), las cookies necesitan `SameSite=None; Secure` — hoy están en `Lax`. Ajustar `_COOKIE_OPTS` en `app/api/v1/auth.py` si se necesita.
+→ Verificar `SESSION_COOKIE_SECURE=true`, HTTPS terminado upstream, y que el dominio del front esté en `CORS_ORIGINS`. Para cross-site (app.ex.com → api.ex.com), las cookies necesitan `SameSite=None; Secure` — hoy están en `Lax`. Ajustar `_COOKIE_OPTS` en `app/modules/identity/routers/auth.py` si se necesita.
 
 **TRM falla con 503**
 → `datos.gov.co` inaccesible. Cachear manualmente con `POST /api/v1/exchange-rates` (admin).

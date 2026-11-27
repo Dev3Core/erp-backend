@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
-from app.core.pagination import (
+from app.shared.pagination import (
     OFFSET_LIMIT_MAX,
     OFFSET_MAX,
     _decode_cursor,

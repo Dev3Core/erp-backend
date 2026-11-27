@@ -2,12 +2,12 @@ import pyotp
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.models.audit_log import AuditLog
+from app.modules.identity.models.audit_log import AuditLog
 from tests.conftest import TestingSession
 
 
 async def _actions_for_email(email: str) -> list[str]:
-    from app.models.user import User
+    from app.modules.identity import User
 
     async with TestingSession() as session:
         user = (await session.execute(select(User).where(User.email == email))).scalar_one()

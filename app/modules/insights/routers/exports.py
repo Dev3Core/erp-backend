@@ -1,0 +1,80 @@
+from datetime import date
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.identity import CurrentTenantId, Role, get_tenant_name, require_roles
+from app.modules.insights.services.exports import liquidations_to_csv, liquidations_to_pdf
+from app.modules.payroll import ExchangeRateService, LiquidationService, LiquidationStatus
+from app.modules.payroll import get_exchange_rate_service as _get_exchange_rate_service
+from app.shared.database import get_db
+
+router = APIRouter(prefix="/exports", tags=["exports"])
+
+AdminOrOwner = require_roles(Role.OWNER, Role.ADMIN)
+
+
+def _get_liq_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    fx: Annotated[ExchangeRateService, Depends(_get_exchange_rate_service)],
+) -> LiquidationService:
+    return LiquidationService(db, fx)
+
+
+LiqDep = Annotated[LiquidationService, Depends(_get_liq_service)]
+
+
+async def _fetch(
+    svc: LiquidationService,
+    tenant_id,
+    status: LiquidationStatus | None,
+    date_from: date | None,
+    date_to: date | None,
+):
+    return await svc.list_all_for_export(
+        tenant_id=tenant_id,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+@router.get("/liquidations.csv", dependencies=[AdminOrOwner])
+async def liquidations_csv(
+    tenant_id: CurrentTenantId,
+    svc: LiqDep,
+    status: Annotated[LiquidationStatus | None, Query()] = None,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+):
+    rows = await _fetch(svc, tenant_id, status, date_from, date_to)
+    payload = liquidations_to_csv(rows)
+    return Response(
+        content=payload,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=liquidations.csv"},
+    )
+
+
+@router.get("/liquidations.pdf", dependencies=[AdminOrOwner])
+async def liquidations_pdf(
+    tenant_id: CurrentTenantId,
+    svc: LiqDep,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    status: Annotated[LiquidationStatus | None, Query()] = None,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+):
+    rows = await _fetch(svc, tenant_id, status, date_from, date_to)
+    tenant_name = await get_tenant_name(db, tenant_id)
+    studio_name = tenant_name if tenant_name is not None else "Studio"
+    payload = liquidations_to_pdf(
+        rows, studio_name=studio_name, period_from=date_from, period_to=date_to
+    )
+    return Response(
+        content=payload,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=liquidations.pdf"},
+    )
