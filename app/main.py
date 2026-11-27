@@ -4,10 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.v1.router import v1_router
+from app import models_registry  # noqa: F401 — register every module's ORM models
 from app.config import settings
-from app.core.middleware import SecurityHeadersMiddleware
-from app.redis import close_redis, init_redis
+from app.routes import v1_router
+from app.shared.middleware import SecurityHeadersMiddleware
+from app.shared.redis import close_redis, init_redis
 
 
 @asynccontextmanager

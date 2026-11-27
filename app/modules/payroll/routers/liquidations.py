@@ -1,0 +1,146 @@
+import uuid
+from datetime import date
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.identity import CurrentTenantId, Role, require_roles
+from app.modules.payroll.dependencies import (
+    get_exchange_rate_service as _get_exchange_rate_service,
+)
+from app.modules.payroll.models.liquidation import LiquidationStatus
+from app.modules.payroll.schemas.liquidation import (
+    LiquidationCreateFromShift,
+    LiquidationResponse,
+    LiquidationUpdate,
+)
+from app.modules.payroll.services.exchange_rate import ExchangeRateService
+from app.modules.payroll.services.liquidation import LiquidationService
+from app.shared.database import get_db
+from app.shared.errors import ServiceError
+from app.shared.pagination import CursorPage, CursorParams, build_cursor_page, cursor_params
+
+router = APIRouter(prefix="/liquidations", tags=["liquidations"])
+
+AdminOrOwner = require_roles(Role.OWNER, Role.ADMIN)
+
+
+def _get_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    exchange_rates: Annotated[ExchangeRateService, Depends(_get_exchange_rate_service)],
+) -> LiquidationService:
+    return LiquidationService(db, exchange_rates)
+
+
+ServiceDep = Annotated[LiquidationService, Depends(_get_service)]
+
+
+@router.post(
+    "/from-shift",
+    response_model=LiquidationResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[AdminOrOwner],
+)
+async def create_from_shift(
+    body: LiquidationCreateFromShift,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        return await svc.create_from_shift(
+            tenant_id=tenant_id,
+            shift_id=body.shift_id,
+            split_config_id=body.split_config_id,
+            period_date=body.period_date,
+            notes=body.notes,
+        )
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+
+
+@router.get("", response_model=CursorPage[LiquidationResponse], dependencies=[AdminOrOwner])
+async def list_liquidations(
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+    params: Annotated[CursorParams, Depends(cursor_params)],
+    status: Annotated[LiquidationStatus | None, Query()] = None,
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+    shift_id: Annotated[uuid.UUID | None, Query()] = None,
+):
+    items, next_cursor, prev_cursor = await svc.list(
+        tenant_id=tenant_id,
+        params=params,
+        status=status,
+        date_from=date_from,
+        date_to=date_to,
+        shift_id=shift_id,
+    )
+    return build_cursor_page(
+        [LiquidationResponse.model_validate(x) for x in items],
+        next_cursor,
+        prev_cursor,
+        params.limit,
+    )
+
+
+@router.get(
+    "/{liquidation_id}",
+    response_model=LiquidationResponse,
+    dependencies=[AdminOrOwner],
+)
+async def get_liquidation(
+    liquidation_id: uuid.UUID,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        return await svc.get(tenant_id=tenant_id, liquidation_id=liquidation_id)
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+
+
+@router.patch(
+    "/{liquidation_id}",
+    response_model=LiquidationResponse,
+    dependencies=[AdminOrOwner],
+)
+async def update_liquidation(
+    liquidation_id: uuid.UUID,
+    body: LiquidationUpdate,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    if body.status is None and body.notes is None:
+        raise HTTPException(422, "At least one of status or notes must be provided")
+    try:
+        if body.status is not None:
+            return await svc.transition_status(
+                tenant_id=tenant_id,
+                liquidation_id=liquidation_id,
+                new_status=body.status,
+                notes=body.notes,
+            )
+        liq = await svc.get(tenant_id=tenant_id, liquidation_id=liquidation_id)
+        liq.notes = body.notes
+        return liq
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+
+
+@router.delete(
+    "/{liquidation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[AdminOrOwner],
+)
+async def delete_liquidation(
+    liquidation_id: uuid.UUID,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        await svc.delete(tenant_id=tenant_id, liquidation_id=liquidation_id)
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+    return None

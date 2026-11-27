@@ -6,14 +6,14 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import StaticPool, event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.api.v1.auth import _get_audit_session_factory
-from app.core.security import hash_password
-from app.database import get_db
 from app.main import app
-from app.models.base import Base
-from app.models.tenant import Tenant
-from app.models.user import Role, User
-from app.redis import get_redis
+from app.modules.identity import Role, User
+from app.modules.identity.models.tenant import Tenant
+from app.modules.identity.routers.auth import _get_audit_session_factory
+from app.shared.database import get_db
+from app.shared.orm import Base
+from app.shared.redis import get_redis
+from app.shared.security import hash_password
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 

@@ -73,6 +73,9 @@ jobs:
           poetry run ruff check .
           poetry run ruff format --check .
 
+      - name: Architecture boundaries (import-linter)
+        run: make lint-arch
+
       - name: Test
         run: poetry run pytest -v
 

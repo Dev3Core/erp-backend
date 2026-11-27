@@ -155,7 +155,7 @@ Pick one; endpoints do not mix.
 ### Offset template
 
 ```python
-from app.core.pagination import (
+from app.shared.pagination import (
     OffsetPage, OffsetParams, build_offset_page, count_from, offset_params, paginate_offset,
 )
 
@@ -180,7 +180,7 @@ async def list_x(
 ### Cursor template
 
 ```python
-from app.core.pagination import (
+from app.shared.pagination import (
     CursorPage, CursorParams, build_cursor_page, cursor_params, paginate_cursor,
 )
 

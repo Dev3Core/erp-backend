@@ -329,7 +329,7 @@ Si el front corre en otro origen (ej. `https://app.example.com` y la API en `htt
 - Backend: `CORS_ORIGINS` debe incluir el origen exacto del front. No usar `*` con credenciales (el backend ya lo impide).
 - Backend: `SESSION_COOKIE_SECURE=true` en prod — las cookies solo viajan por HTTPS.
 - Frontend: todas las llamadas `fetch` necesitan `credentials: "include"`.
-- Mismo sitio registrable: ambos dominios deben ser *same-site* para que `SameSite=Lax` funcione. Para cross-site habría que pasar a `SameSite=None; Secure`, lo cual se puede configurar extendiendo `_COOKIE_OPTS` en `app/api/v1/auth.py` si hace falta.
+- Mismo sitio registrable: ambos dominios deben ser *same-site* para que `SameSite=Lax` funcione. Para cross-site habría que pasar a `SameSite=None; Secure`, lo cual se puede configurar extendiendo `_COOKIE_OPTS` en `app/modules/identity/routers/auth.py` si hace falta.
 
 ---
 
@@ -348,7 +348,7 @@ async function logout() {
 
 ## Referencias
 
-- [`app/api/v1/auth.py`](../app/api/v1/auth.py) — implementación de los endpoints.
-- [`app/services/auth.py`](../app/services/auth.py) — reglas de negocio, blacklist, MFA.
-- [`app/core/dependencies.py`](../app/core/dependencies.py) — `CurrentUser`, `require_roles`, `MFAVerifiedUser`.
+- [`app/modules/identity/routers/auth.py`](../app/modules/identity/routers/auth.py) — implementación de los endpoints.
+- [`app/modules/identity/services/auth.py`](../app/modules/identity/services/auth.py) — reglas de negocio, blacklist, MFA.
+- [`app/modules/identity/dependencies.py`](../app/modules/identity/dependencies.py) — `CurrentUser`, `require_roles`, `MFAVerifiedUser`.
 - [`tests/api/test_me_endpoint.py`](../tests/api/test_me_endpoint.py) — contrato de `/me` y garantía de JWT mínimo.

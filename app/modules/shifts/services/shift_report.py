@@ -1,0 +1,71 @@
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.shifts.models.shift import Shift
+from app.modules.shifts.models.shift_report import ShiftReport
+from app.shared.errors import NotFoundError
+from app.shared.pagination import CursorParams, paginate_cursor
+
+
+class ShiftReportService:
+    """Immutable end-of-shift summary. Generated when a Shift transitions to FINISHED."""
+
+    def __init__(self, db: AsyncSession):
+        self._db = db
+
+    async def generate_if_missing(self, *, tenant_id: uuid.UUID, shift: Shift) -> ShiftReport:
+        existing = await self._db.execute(
+            select(ShiftReport).where(ShiftReport.shift_id == shift.id)
+        )
+        already = existing.scalar_one_or_none()
+        if already is not None:
+            return already
+
+        duration_min = 0
+        if shift.end_time is not None and shift.start_time is not None:
+            delta = shift.end_time - shift.start_time
+            duration_min = max(int(delta.total_seconds() // 60), 0)
+
+        summary_lines = [
+            f"duration={duration_min}min",
+            f"tokens={shift.tokens_earned}",
+            f"usd={shift.usd_earned}",
+        ]
+        report = ShiftReport(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            shift_id=shift.id,
+            duration_minutes=duration_min,
+            total_tokens=shift.tokens_earned,
+            total_usd=shift.usd_earned,
+            summary="; ".join(summary_lines),
+        )
+        self._db.add(report)
+        await self._db.flush()
+        return report
+
+    async def list_for_tenant(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        params: CursorParams,
+    ) -> tuple[list[ShiftReport], str | None, str | None]:
+        stmt = select(ShiftReport).where(ShiftReport.tenant_id == tenant_id)
+        return await paginate_cursor(
+            self._db,
+            stmt=stmt,
+            params=params,
+            created_col=ShiftReport.created_at,
+            id_col=ShiftReport.id,
+        )
+
+    async def get_for_shift(self, *, tenant_id: uuid.UUID, shift_id: uuid.UUID) -> ShiftReport:
+        stmt = select(ShiftReport).where(
+            ShiftReport.tenant_id == tenant_id, ShiftReport.shift_id == shift_id
+        )
+        report = (await self._db.execute(stmt)).scalar_one_or_none()
+        if report is None:
+            raise NotFoundError("Shift report not found")
+        return report

@@ -1,4 +1,4 @@
-.PHONY: dev dev-down prod prod-down migrate lint test shell security-scan sast sca secrets-scan secrets-audit semgrep-scan
+.PHONY: dev dev-down prod prod-down migrate lint lint-arch test shell security-scan sast sca secrets-scan secrets-audit semgrep-scan
 
 COMPOSE_DEV  = docker compose -f .docker/compose.yml
 COMPOSE_PROD = docker compose -f .docker/compose.prod.yml
@@ -34,6 +34,9 @@ migration:
 lint:
 	poetry run ruff check .
 	poetry run ruff format --check .
+
+lint-arch:
+	poetry run lint-imports
 
 lint-fix:
 	poetry run ruff check --fix .

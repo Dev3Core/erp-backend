@@ -1,0 +1,119 @@
+import uuid
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.identity import CurrentTenantId, Role, require_roles
+from app.modules.payroll.schemas.split_config import (
+    SplitConfigCreate,
+    SplitConfigResponse,
+    SplitConfigUpdate,
+)
+from app.modules.payroll.services.split_config import SplitConfigService
+from app.shared.database import get_db
+from app.shared.errors import ServiceError
+from app.shared.pagination import OffsetPage, OffsetParams, build_offset_page, offset_params
+
+router = APIRouter(prefix="/split-configs", tags=["split-configs"])
+
+AdminOrOwner = require_roles(Role.OWNER, Role.ADMIN)
+
+
+def _get_service(db: Annotated[AsyncSession, Depends(get_db)]) -> SplitConfigService:
+    return SplitConfigService(db)
+
+
+ServiceDep = Annotated[SplitConfigService, Depends(_get_service)]
+
+
+@router.post(
+    "",
+    response_model=SplitConfigResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[AdminOrOwner],
+)
+async def create_split_config(
+    body: SplitConfigCreate,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        return await svc.create(
+            tenant_id=tenant_id,
+            label=body.label,
+            platform_pct=body.platform_pct,
+            studio_pct=body.studio_pct,
+            model_pct=body.model_pct,
+            is_default=body.is_default,
+        )
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+
+
+@router.get("", response_model=OffsetPage[SplitConfigResponse], dependencies=[AdminOrOwner])
+async def list_split_configs(
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+    params: Annotated[OffsetParams, Depends(offset_params)],
+):
+    items, total = await svc.list(tenant_id=tenant_id, params=params)
+    return build_offset_page([SplitConfigResponse.model_validate(c) for c in items], total, params)
+
+
+@router.get(
+    "/{config_id}",
+    response_model=SplitConfigResponse,
+    dependencies=[AdminOrOwner],
+)
+async def get_split_config(
+    config_id: uuid.UUID,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        return await svc.get(tenant_id=tenant_id, config_id=config_id)
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+
+
+@router.patch(
+    "/{config_id}",
+    response_model=SplitConfigResponse,
+    dependencies=[AdminOrOwner],
+)
+async def update_split_config(
+    config_id: uuid.UUID,
+    body: SplitConfigUpdate,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        return await svc.update(
+            tenant_id=tenant_id,
+            config_id=config_id,
+            label=body.label,
+            platform_pct=body.platform_pct,
+            studio_pct=body.studio_pct,
+            model_pct=body.model_pct,
+            is_default=body.is_default,
+        )
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+
+
+@router.delete(
+    "/{config_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[AdminOrOwner],
+)
+async def delete_split_config(
+    config_id: uuid.UUID,
+    tenant_id: CurrentTenantId,
+    svc: ServiceDep,
+):
+    try:
+        await svc.delete(tenant_id=tenant_id, config_id=config_id)
+    except ServiceError as e:
+        raise HTTPException(e.status_code, e.detail) from None
+    return None

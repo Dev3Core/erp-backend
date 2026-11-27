@@ -1,0 +1,105 @@
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.modules.studio.models.macro import Macro
+from app.modules.studio.models.room import Platform
+from app.shared.errors import NotFoundError
+from app.shared.pagination import OffsetParams, count_from, paginate_offset
+
+
+class MacroService:
+    def __init__(self, db: AsyncSession):
+        self._db = db
+
+    async def create(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        label: str,
+        content: str,
+        platform: Platform | None,
+        position: int,
+    ) -> Macro:
+        entry = Macro(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            user_id=user_id,
+            label=label,
+            content=content,
+            platform=platform,
+            position=position,
+        )
+        self._db.add(entry)
+        await self._db.flush()
+        return entry
+
+    async def list_for_user(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        params: OffsetParams,
+        platform: Platform | None = None,
+        active_only: bool = True,
+    ) -> tuple[list[Macro], int]:
+        stmt = select(Macro).where(
+            Macro.tenant_id == tenant_id,
+            Macro.user_id == user_id,
+        )
+        if platform is not None:
+            stmt = stmt.where(Macro.platform == platform)
+        if active_only:
+            stmt = stmt.where(Macro.is_active.is_(True))
+        stmt = stmt.order_by(Macro.position.asc(), Macro.created_at.asc(), Macro.id.asc())
+        return await paginate_offset(
+            self._db, stmt=stmt, count_stmt=count_from(stmt), params=params
+        )
+
+    async def update(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        user_id: uuid.UUID,
+        macro_id: uuid.UUID,
+        label: str | None,
+        content: str | None,
+        platform: Platform | None,
+        position: int | None,
+        is_active: bool | None,
+    ) -> Macro:
+        entry = await self._get_in_scope(tenant_id=tenant_id, user_id=user_id, macro_id=macro_id)
+        if label is not None:
+            entry.label = label
+        if content is not None:
+            entry.content = content
+        if platform is not None:
+            entry.platform = platform
+        if position is not None:
+            entry.position = position
+        if is_active is not None:
+            entry.is_active = is_active
+        await self._db.flush()
+        return entry
+
+    async def delete(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, macro_id: uuid.UUID
+    ) -> None:
+        entry = await self._get_in_scope(tenant_id=tenant_id, user_id=user_id, macro_id=macro_id)
+        await self._db.delete(entry)
+        await self._db.flush()
+
+    async def _get_in_scope(
+        self, *, tenant_id: uuid.UUID, user_id: uuid.UUID, macro_id: uuid.UUID
+    ) -> Macro:
+        stmt = select(Macro).where(
+            Macro.id == macro_id,
+            Macro.tenant_id == tenant_id,
+            Macro.user_id == user_id,
+        )
+        entry = (await self._db.execute(stmt)).scalar_one_or_none()
+        if entry is None:
+            raise NotFoundError("Macro not found")
+        return entry

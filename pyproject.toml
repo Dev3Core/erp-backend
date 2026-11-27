@@ -47,10 +47,77 @@ bandit = { version = "^1.8.0", extras = ["toml"] }
 pip-audit = "^2.7.3"
 semgrep = "^1.100.0"
 detect-secrets = "^1.5.0"
+import-linter = "~2.3"
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv", "alembic/versions"]
 skips = ["B101"]  # assert_used — fine in tests/internal
+
+# --- Architecture boundaries (modular monolith). Run: `make lint-arch`.
+# See docs/architecture.md for the rules behind these contracts.
+[tool.importlinter]
+root_packages = ["app"]
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "shared is infrastructure: it must not depend on domain modules or the composition root"
+type = "forbidden"
+source_modules = ["app.shared"]
+forbidden_modules = ["app.modules", "app.models_registry", "app.routes", "app.main"]
+
+[[tool.importlinter.contracts]]
+name = "modules are independent except through the allowed public APIs listed here"
+type = "independence"
+modules = [
+    "app.modules.identity",
+    "app.modules.studio",
+    "app.modules.shifts",
+    "app.modules.payroll",
+    "app.modules.insights",
+    "app.modules.notifications",
+    "app.modules.extension",
+    "app.modules.automation",
+    "app.modules.health",
+]
+# Allowed cross-module dependencies. The right-hand side is always a package
+# root (its __init__ is the public API); importing internals such as
+# `app.modules.identity.models.user` from another module is a violation.
+ignore_imports = [
+    "app.modules.studio.** -> app.modules.identity",
+    "app.modules.shifts.** -> app.modules.identity",
+    "app.modules.shifts.** -> app.modules.studio",
+    "app.modules.payroll.** -> app.modules.identity",
+    "app.modules.payroll.** -> app.modules.shifts",
+    "app.modules.insights.** -> app.modules.identity",
+    "app.modules.insights.** -> app.modules.studio",
+    "app.modules.insights.** -> app.modules.shifts",
+    "app.modules.insights.** -> app.modules.payroll",
+    "app.modules.notifications.** -> app.modules.identity",
+    "app.modules.extension.** -> app.modules.identity",
+    "app.modules.extension.** -> app.modules.studio",
+]
+
+[[tool.importlinter.contracts]]
+name = "inside a module: router -> dependencies -> service -> schemas -> models"
+type = "layers"
+containers = [
+    "app.modules.identity",
+    "app.modules.studio",
+    "app.modules.shifts",
+    "app.modules.payroll",
+    "app.modules.insights",
+    "app.modules.notifications",
+    "app.modules.extension",
+    "app.modules.automation",
+    "app.modules.health",
+]
+layers = [
+    "(router) | (routers)",
+    "(dependencies)",
+    "(service) | (services)",
+    "(schemas)",
+    "(models)",
+]
 
 [build-system]
 requires = ["poetry-core"]
